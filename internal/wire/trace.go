@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-// tracing is on when ANY_TRACE is set: every HTTP round trip is logged to
+// tracing is on when GION_TRACE is set: every HTTP round trip is logged to
 // stderr with its pkt-line request body and timing.
-var tracing = os.Getenv("ANY_TRACE") != ""
+var tracing = os.Getenv("GION_TRACE") != ""
 
 type traceTransport struct{ next http.RoundTripper }
 

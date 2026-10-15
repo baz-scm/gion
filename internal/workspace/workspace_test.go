@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/AnyGitForge/AnyForge/cli/internal/cache"
-	"github.com/AnyGitForge/AnyForge/cli/internal/repo"
-	"github.com/AnyGitForge/AnyForge/cli/internal/testgit"
+	"github.com/baz-scm/gion/internal/cache"
+	"github.com/baz-scm/gion/internal/repo"
+	"github.com/baz-scm/gion/internal/testgit"
 )
 
 func openRepo(t *testing.T, remote string) *repo.Repo {
@@ -31,8 +31,8 @@ func kinds(cs []FileChange) map[string]Kind {
 }
 
 func TestCloneEditCommit(t *testing.T) {
-	t.Setenv("GIT_AUTHOR_NAME", "any")
-	t.Setenv("GIT_AUTHOR_EMAIL", "any@test")
+	t.Setenv("GIT_AUTHOR_NAME", "gion")
+	t.Setenv("GIT_AUTHOR_EMAIL", "gion@test")
 	remote, clone := testgit.Serve(t)
 	r := openRepo(t, remote)
 	ctx := context.Background()

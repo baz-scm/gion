@@ -1,5 +1,5 @@
 // Package testgit serves a seeded bare repo over git:// for integration
-// tests. The git CLI is a test fixture only; `any` never shells out to it.
+// tests. The git CLI is a test fixture only; `gion` never shells out to it.
 package testgit
 
 import (

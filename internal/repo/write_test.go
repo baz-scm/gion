@@ -11,8 +11,8 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/filemode"
 	"github.com/go-git/go-git/v6/plumbing/object"
 
-	"github.com/AnyGitForge/AnyForge/cli/internal/cache"
-	"github.com/AnyGitForge/AnyForge/cli/internal/testgit"
+	"github.com/baz-scm/gion/internal/cache"
+	"github.com/baz-scm/gion/internal/testgit"
 )
 
 func openTest(t *testing.T, remote string) *Repo {
@@ -26,7 +26,7 @@ func openTest(t *testing.T, remote string) *Repo {
 	return r
 }
 
-var sig = object.Signature{Name: "any", Email: "any@test", When: time.Unix(1_700_000_000, 0)}
+var sig = object.Signature{Name: "gion", Email: "gion@test", When: time.Unix(1_700_000_000, 0)}
 
 // upstreamWrite simulates another writer pushing to main from a clone.
 func upstreamWrite(t *testing.T, clone, path, content string) {

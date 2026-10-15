@@ -1,6 +1,5 @@
-// Command any is a thin git client: it holds only what it needs and pulls
-// files, commits and diffs from the remote on demand.
-package main
+// Package cli implements the gion command line.
+package cli
 
 import (
 	"context"
@@ -13,12 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AnyGitForge/AnyForge/cli/internal/repo"
-	"github.com/AnyGitForge/AnyForge/cli/internal/wire"
-	"github.com/AnyGitForge/AnyForge/cli/internal/workspace"
+	"github.com/baz-scm/gion/internal/repo"
+	"github.com/baz-scm/gion/internal/wire"
+	"github.com/baz-scm/gion/internal/workspace"
 )
 
-const usage = `usage: any <command> <remote> [args]
+const usageText = `usage: %s <command> [args]
 
 commands:
   ls-refs <remote> [--prefix p]...     list remote refs (protocol v2)
@@ -33,7 +32,7 @@ commands:
   commit  <remote> -m <msg> <path>=<local>... [--rm <path>]...
           [--branch <name> [--onto <rev>] | --to <branch>]
           build a commit from the changes and push it; no checkout needed.
-          default: new branch any/<timestamp> from HEAD.
+          default: new branch gion/<timestamp> from HEAD.
           --to: update an existing branch (compare-and-swap, retries on
           upstream moves that don't touch your paths).
 
@@ -41,13 +40,19 @@ commands:
 flags: --md  markdown output for agents
 `
 
-func main() {
+// prog is the command name used in help and error text.
+var prog = "gion"
+
+// Main runs the CLI as prog and returns the process exit code.
+func Main(invokedAs string, args []string) int {
+	prog = invokedAs
+	usage := fmt.Sprintf(usageText, prog)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	if len(os.Args) < 2 {
+	if len(args) < 1 {
 		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
+		return 2
 	}
 
 	cmds := map[string]func(context.Context, []string) error{
@@ -58,20 +63,21 @@ func main() {
 		"clone":   clone,
 		"status":  status,
 	}
-	name := os.Args[1]
+	name := args[0]
 	if name == "-h" || name == "--help" || name == "help" {
 		fmt.Print(usage)
-		return
+		return 0
 	}
 	fn, ok := cmds[name]
 	if !ok {
-		fmt.Fprintf(os.Stderr, "any: unknown command %q\n\n%s", name, usage)
-		os.Exit(2)
+		fmt.Fprintf(os.Stderr, "%s: unknown command %q\n\n%s", prog, name, usage)
+		return 2
 	}
-	if err := fn(ctx, os.Args[2:]); err != nil {
-		fmt.Fprintln(os.Stderr, "any:", err)
-		os.Exit(1)
+	if err := fn(ctx, args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", prog, err)
+		return 1
 	}
+	return 0
 }
 
 type multiFlag []string
@@ -106,7 +112,7 @@ func lsRefs(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(pos) != 1 {
-		return errors.New("usage: any ls-refs <remote> [--prefix p]...")
+		return fmt.Errorf("usage: %s ls-refs <remote> [--prefix p]...", prog)
 	}
 	if len(prefixes) == 0 {
 		prefixes = wire.DefaultPrefixes
@@ -149,7 +155,7 @@ func cat(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(pos) != 2 || !strings.Contains(pos[1], ":") {
-		return errors.New("usage: any cat <remote> <rev>:<path>")
+		return fmt.Errorf("usage: %s cat <remote> <rev>:<path>", prog)
 	}
 	r, err := repo.Open(pos[0])
 	if err != nil {
@@ -167,7 +173,7 @@ func cat(ctx context.Context, args []string) error {
 		return err
 	}
 	if !e.Mode.IsFile() {
-		return fmt.Errorf("%s is a directory; use `any ls`", p)
+		return fmt.Errorf("%s is a directory; use `%s ls`", p, prog)
 	}
 	data, err := r.Blob(ctx, e.Hash)
 	if err != nil {
@@ -185,7 +191,7 @@ func ls(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(pos) < 1 || len(pos) > 2 {
-		return errors.New("usage: any ls <remote> [<rev>[:<dir>]]")
+		return fmt.Errorf("usage: %s ls <remote> [<rev>[:<dir>]]", prog)
 	}
 	spec := "HEAD"
 	if len(pos) == 2 {
@@ -207,7 +213,7 @@ func ls(ctx context.Context, args []string) error {
 		return err
 	}
 	if e.Mode.IsFile() {
-		return fmt.Errorf("%s is a file; use `any cat`", p)
+		return fmt.Errorf("%s is a file; use `%s cat`", p, prog)
 	}
 	t, err := r.Tree(ctx, e.Hash)
 	if err != nil {
@@ -244,7 +250,7 @@ func commit(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("commit", flag.ContinueOnError)
 	msg := fs.String("m", "", "commit message (required)")
 	onto := fs.String("onto", "HEAD", "base rev for a new branch")
-	branch := fs.String("branch", "", "new branch to create (default any/<timestamp>)")
+	branch := fs.String("branch", "", "new branch to create (default gion/<timestamp>)")
 	to := fs.String("to", "", "existing branch to update with compare-and-swap")
 	md := fs.Bool("md", false, "markdown output")
 	var rms multiFlag
@@ -254,7 +260,7 @@ func commit(ctx context.Context, args []string) error {
 		return err
 	}
 	if *msg == "" {
-		return errors.New("usage: any commit [<remote>] -m <msg> [<path>=<local>...] [--rm <path>]...")
+		return fmt.Errorf("usage: %s commit [<remote>] -m <msg> [<path>=<local>...] [--rm <path>]...", prog)
 	}
 	if len(pos) == 0 {
 		if *to != "" || len(rms) > 0 || *onto != "HEAD" {
@@ -266,7 +272,7 @@ func commit(ctx context.Context, args []string) error {
 		return errors.New("--to and --branch are exclusive")
 	}
 	if *to == "" && *branch == "" {
-		*branch = "any/" + time.Now().UTC().Format("20060102-150405")
+		*branch = "gion/" + time.Now().UTC().Format("20060102-150405")
 	}
 
 	var changes []repo.Change
@@ -345,7 +351,7 @@ func clone(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(pos) != 2 {
-		return errors.New("usage: any clone <remote> <dir> [--ref r] [--path p]...")
+		return fmt.Errorf("usage: %s clone <remote> <dir> [--ref r] [--path p]...", prog)
 	}
 	r, err := repo.Open(pos[0])
 	if err != nil {
@@ -367,7 +373,7 @@ func clone(ctx context.Context, args []string) error {
 		fmt.Printf("## Cloned `%s` into `%s`\n\n", pos[0], pos[1])
 		fmt.Printf("- Commit: `%s` (%s)\n- Scope: %s\n", res.Commit, *ref, scope)
 		fmt.Printf("- %d files, %s, %s\n", res.Files, humanBytes(res.Bytes), elapsed)
-		fmt.Printf("- No history and no `.git`: use `any status` and `any commit` inside it.\n")
+		fmt.Printf("- No history and no `.git`: use `%s status` and `%s commit` inside it.\n", prog, prog)
 		return nil
 	}
 	fmt.Printf("cloned %s@%s into %s: %d files, %s (%s) in %s\n", pos[0], res.Commit.String()[:12], pos[1], res.Files, humanBytes(res.Bytes), scope, elapsed)

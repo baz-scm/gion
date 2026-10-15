@@ -1,4 +1,4 @@
-// Package cache is the shared, content-addressed object store every `any`
+// Package cache is the shared, content-addressed object store every `gion`
 // invocation reads and writes. Objects are immutable, so concurrent processes
 // need no locks: each write goes to a temp file and is renamed into place, and
 // two writers of the same id produce identical bytes.
@@ -28,16 +28,16 @@ type Store struct {
 	mem *memory.Storage // object factory only; never holds data
 }
 
-// Dir returns the cache root: $ANY_CACHE, else <user cache dir>/any/objects.
+// Dir returns the cache root: $GION_CACHE, else <user cache dir>/gion/objects.
 func Dir() (string, error) {
-	if d := os.Getenv("ANY_CACHE"); d != "" {
+	if d := os.Getenv("GION_CACHE"); d != "" {
 		return d, nil
 	}
 	base, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "any", "objects"), nil
+	return filepath.Join(base, "gion", "objects"), nil
 }
 
 // Open opens (creating if needed) the cache at dir.

@@ -18,7 +18,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/go-git/go-git/v6/storage/memory"
 
-	"github.com/AnyGitForge/AnyForge/cli/internal/wire"
+	"github.com/baz-scm/gion/internal/wire"
 )
 
 // ErrConflict means a path we changed was also changed upstream.

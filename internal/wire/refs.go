@@ -17,7 +17,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v6/plumbing/transport"
 
-	"github.com/AnyGitForge/AnyForge/cli/internal/auth"
+	"github.com/baz-scm/gion/internal/auth"
 )
 
 // DefaultPrefixes keeps ls-refs small on repos with huge tag/PR namespaces.

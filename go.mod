@@ -1,6 +1,6 @@
-module github.com/AnyGitForge/AnyForge/cli
+module github.com/baz-scm/gion
 
-go 1.27.2
+go 1.26.0
 
 require github.com/go-git/go-git/v6 v6.0.0-beta.1
 

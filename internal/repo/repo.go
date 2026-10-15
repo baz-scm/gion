@@ -15,8 +15,8 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 
-	"github.com/AnyGitForge/AnyForge/cli/internal/cache"
-	"github.com/AnyGitForge/AnyForge/cli/internal/wire"
+	"github.com/baz-scm/gion/internal/cache"
+	"github.com/baz-scm/gion/internal/wire"
 )
 
 // ErrNotExist means a path or ref was not found.

@@ -1,5 +1,5 @@
 // Package workspace is a light working directory: the files for chosen paths
-// at one commit, plus .any/state.json. There is no .git and no history; the
+// at one commit, plus .gion/state.json. There is no .git and no history; the
 // remote branch is the only source of truth.
 package workspace
 
@@ -19,10 +19,10 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/filemode"
 	format "github.com/go-git/go-git/v6/plumbing/format/config"
 
-	"github.com/AnyGitForge/AnyForge/cli/internal/repo"
+	"github.com/baz-scm/gion/internal/repo"
 )
 
-const stateDir = ".any"
+const stateDir = ".gion"
 
 // FileState is the index entry for one materialized file.
 type FileState struct {
@@ -32,7 +32,7 @@ type FileState struct {
 	MTime int64  `json:"mtime"` // UnixNano, for the stat cache
 }
 
-// State is persisted in .any/state.json.
+// State is persisted in .gion/state.json.
 type State struct {
 	Remote string `json:"remote"`
 	// Ref is what was cloned (e.g. "main"); Base is the commit on disk.
@@ -67,7 +67,7 @@ func Find(dir string) (*Workspace, error) {
 			return w, nil
 		}
 		if filepath.Dir(d) == d {
-			return nil, errors.New("not in an any workspace (run `any clone` first)")
+			return nil, errors.New("not in a gion workspace (run `gion clone` first)")
 		}
 	}
 }
@@ -335,7 +335,7 @@ type CommitResult struct {
 }
 
 // Commit pushes every change in the workspace. The first commit creates
-// branch (any/<timestamp> if empty); later ones update it with CAS.
+// branch (gion/<timestamp> if empty); later ones update it with CAS.
 func (w *Workspace) Commit(ctx context.Context, r *repo.Repo, msg, branch string) (CommitResult, error) {
 	changes, err := w.Status()
 	if err != nil {
@@ -361,7 +361,7 @@ func (w *Workspace) Commit(ctx context.Context, r *repo.Repo, msg, branch string
 		opts.To, opts.Base = w.State.Branch, base
 	default:
 		if branch == "" {
-			branch = "any/" + time.Now().UTC().Format("20060102-150405")
+			branch = "gion/" + time.Now().UTC().Format("20060102-150405")
 		}
 		opts.Branch, opts.Onto = branch, w.State.Base
 	}
