@@ -53,11 +53,11 @@ Or download a prebuilt binary for Linux or macOS from [Releases](https://github.
 
 gion keeps a cache in `~/.gion` (see [How it works](#how-it-works)). It includes a `CACHEDIR.TAG`, so backup tools such as restic and borg skip it; on macOS, exclude it from Time Machine with `tmutil addexclusion ~/.gion`.
 
-Credentials are borrowed, never stored. gion tries, in order: the `GION_TOKEN` environment variable, then `gh auth token`, then your `git credential` helper.
+Credentials are borrowed, never stored. gion tries, in order: the `GITHUB_TOKEN` environment variable (for github.com only; in GitHub Actions use the built-in `secrets.GITHUB_TOKEN`), then `gh auth token`, then your `git credential` helper.
 
 ## Commands
 
-`<remote>` is a URL or a GitHub `owner/repo`. Run `gion help` for the full usage text.
+`<remote>` is a URL or a GitHub `owner/repo`. A `<rev>` is a branch, tag, `HEAD` or commit id, optionally with `~N`/`^N` parent steps (`main~2`). Short commit ids work on GitHub (expanded through its API; the git protocol only takes full ids). Run `gion help` for the full usage text.
 
 | Command | What it does |
 | --- | --- |
@@ -66,8 +66,11 @@ Credentials are borrowed, never stored. gion tries, in order: the `GION_TOKEN` e
 | `ls <remote> [<rev>[:<dir>]]` | List a directory. The output matches `git ls-tree`. |
 | `find <remote> [<rev>] <pattern>` | Search file paths across the whole repo. A substring, or a glob (`*`, `?`, `**`, `[...]`); case-insensitive unless the pattern has uppercase. |
 | `grep <remote> [<rev>] <regex> [--path p]...` | Search file contents and print `path:line:text`. See [Search](#search). |
+| `diff <remote> [<rev>] [<rev>] [--path p]...` | What changed between two commits (`a b` or `a..b`), or what one commit changed (default `HEAD`). Prints a unified diff; `--name-only` / `--name-status` for just the paths. Only the trees and files that differ are fetched, so it's fast on any repo size. |
 | `clone <remote> <dir> [--path p]...` | Create a workspace with only the chosen paths (default: everything) at one commit. It has no history and no `.git` directory. |
 | `status` | Inside a workspace: added, modified and deleted files. Untracked files matched by `.gitignore` are skipped. |
+| `diff [--name-only \| --name-status]` | Inside a workspace: your edits as a unified diff. |
+| `add <path>...` | Inside a workspace: widen it with more files or directories at the workspace's commit. A path that doesn't exist yet just joins the workspace, so new files there are committed. |
 | `sync` | Inside a workspace: bring files up to date with the branch. Files you've edited are kept; if upstream changed them too, nothing is written and the conflicting paths are listed. |
 | `switch <branch>` | Inside a workspace: move to an existing branch. Only files that differ are rewritten; your edits are kept (nothing changes if they conflict). Later commits go to that branch. |
 | `commit -m <msg> [--branch b \| --to b]` | Inside a workspace: push your changes. By default the first commit creates a branch (`gion/<timestamp>`, or `--branch b`) and later commits update it. `--to b` pushes onto an existing branch instead. If someone else pushed to the branch on other files, their changes are written to disk too. |

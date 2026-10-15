@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -96,4 +97,40 @@ func CodeSearch(ctx context.Context, remote, literal string) (paths []string, to
 		}
 	}
 	return paths, total, nil
+}
+
+// ResolveCommit expands an abbreviated commit id to the full one using the
+// forge's API; the git protocol can't look up id prefixes.
+func ResolveCommit(ctx context.Context, remote, short string) (string, error) {
+	repo, ok := GitHubRepo(remote)
+	if !ok {
+		return "", errors.New("short commit ids can only be resolved on github.com remotes; use the full 40-character id")
+	}
+	api, _ := url.Parse("https://github.com/")
+	cred, err := auth.ForURL(ctx, api)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/"+repo+"/commits/"+url.PathEscape(short), nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github.sha") // body is just the id
+	req.Header.Set("Authorization", "Bearer "+cred.Password)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var body strings.Builder
+	if _, err := io.Copy(&body, io.LimitReader(resp.Body, 4096)); err != nil {
+		return "", err
+	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return strings.TrimSpace(body.String()), nil
+	case http.StatusNotFound, http.StatusUnprocessableEntity:
+		return "", fmt.Errorf("no commit %s on github.com/%s (or the prefix is ambiguous)", short, repo)
+	}
+	return "", fmt.Errorf("github: resolving %s: %s", short, resp.Status)
 }

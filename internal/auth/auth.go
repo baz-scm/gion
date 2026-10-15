@@ -16,14 +16,14 @@ import (
 )
 
 // ErrNoCredentials is returned when no helper produced a credential.
-var ErrNoCredentials = errors.New("no credentials: set GION_TOKEN, run `gh auth login`, or configure a git credential helper")
+var ErrNoCredentials = errors.New("no credentials: set GITHUB_TOKEN, run `gh auth login`, or configure a git credential helper")
 
 // ForURL resolves basic auth for u. Sources, in order:
-//  1. GION_TOKEN env var
+//  1. GITHUB_TOKEN env var (github.com only, so it never leaks elsewhere)
 //  2. `gh auth token --hostname <host>`
 //  3. `git credential fill`
 func ForURL(ctx context.Context, u *url.URL) (*http.BasicAuth, error) {
-	if tok := os.Getenv("GION_TOKEN"); tok != "" {
+	if tok := os.Getenv("GITHUB_TOKEN"); tok != "" && u.Hostname() == "github.com" {
 		return tokenAuth(tok), nil
 	}
 	if tok, err := ghToken(ctx, u.Hostname()); err == nil && tok != "" {

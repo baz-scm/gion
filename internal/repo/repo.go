@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/go-git/go-git/v6/plumbing"
@@ -16,6 +17,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 
 	"github.com/baz-scm/gion/internal/cache"
+	"github.com/baz-scm/gion/internal/forge"
 	"github.com/baz-scm/gion/internal/wire"
 )
 
@@ -61,11 +63,20 @@ func (r *Repo) session(ctx context.Context) (*wire.Session, error) {
 	return r.sess, nil
 }
 
-// Resolve turns a rev (full oid, HEAD, branch, tag, or full ref name) into a
-// commit id. Refs are always asked of the server, never cached.
+// Resolve turns a rev into a commit id: a full or (on GitHub) abbreviated
+// id, HEAD, a branch, a tag or a full ref name, optionally followed by ~N or
+// ^N parent steps. Refs are always asked of the server, never cached.
 func (r *Repo) Resolve(ctx context.Context, rev string) (plumbing.Hash, error) {
 	if h, ok := plumbing.FromHex(rev); ok && len(rev) == 40 {
 		return h, nil
+	}
+	if i := strings.IndexAny(rev, "~^"); i > 0 {
+		// Ref names can't contain ~ or ^, so this is always a parent walk.
+		h, err := r.Resolve(ctx, rev[:i])
+		if err != nil {
+			return plumbing.ZeroHash, err
+		}
+		return r.walkParents(ctx, h, rev[:i], rev[i:])
 	}
 	s, err := r.session(ctx)
 	if err != nil {
@@ -99,7 +110,74 @@ func (r *Repo) Resolve(ctx context.Context, rev string) (plumbing.Hash, error) {
 			return ref.OID, nil
 		}
 	}
+	if isHex(rev) {
+		// The wire protocol can only look up refs and full ids; the forge
+		// can expand a prefix.
+		full, err := forge.ResolveCommit(ctx, r.Remote, rev)
+		if err != nil {
+			return plumbing.ZeroHash, fmt.Errorf("rev %q: %w", rev, err)
+		}
+		if h, ok := plumbing.FromHex(full); ok && len(full) == 40 {
+			return h, nil
+		}
+		return plumbing.ZeroHash, fmt.Errorf("rev %q: forge returned %q", rev, full)
+	}
 	return plumbing.ZeroHash, fmt.Errorf("rev %q: %w", rev, ErrNotExist)
+}
+
+// walkParents applies git's ~N (first parent, N times) and ^N (Nth parent)
+// steps to commit h. Each step fetches one commit.
+func (r *Repo) walkParents(ctx context.Context, h plumbing.Hash, base, steps string) (plumbing.Hash, error) {
+	for at := base; steps != ""; {
+		op := steps[0]
+		j := 1
+		for j < len(steps) && steps[j] >= '0' && steps[j] <= '9' {
+			j++
+		}
+		n := 1
+		if j > 1 {
+			v, err := strconv.Atoi(steps[1:j])
+			if err != nil {
+				return plumbing.ZeroHash, fmt.Errorf("bad rev suffix %q", steps)
+			}
+			n = v
+		}
+		if op != '~' && op != '^' {
+			return plumbing.ZeroHash, fmt.Errorf("bad rev suffix %q", steps)
+		}
+		count, nth := n, 1 // ~N: first parent N times
+		if op == '^' {
+			count, nth = 1, n // ^N: Nth parent once; ^0 is the commit itself
+			if n == 0 {
+				count = 0
+			}
+		}
+		for k := 0; k < count; k++ {
+			c, err := r.Commit(ctx, h)
+			if err != nil {
+				return plumbing.ZeroHash, err
+			}
+			if len(c.ParentHashes) < nth {
+				return plumbing.ZeroHash, fmt.Errorf("%s%s: %w (commit %s has %d parent(s))", at, steps[:j], ErrNotExist, h.String()[:12], len(c.ParentHashes))
+			}
+			h = c.ParentHashes[nth-1]
+		}
+		at += steps[:j]
+		steps = steps[j:]
+	}
+	return h, nil
+}
+
+func isHex(s string) bool {
+	if len(s) < 4 || len(s) >= 40 {
+		return false
+	}
+	for _, c := range s {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			return false
+		}
+	}
+	return true
 }
 
 // Ensure makes every id in hs present in the cache, fetching missing ones

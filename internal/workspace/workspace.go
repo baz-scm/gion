@@ -635,3 +635,173 @@ func (w *Workspace) Switch(ctx context.Context, r *repo.Repo, branch string) (Sy
 	w.State.Ref, w.State.Branch, w.State.Base = branch, branch, tip.String()
 	return res, w.save()
 }
+
+// Diff returns the workspace's pending changes as file diffs against its
+// base, plus the on-disk contents of new and modified files keyed by blob id
+// (for repo.WritePatch).
+func (w *Workspace) Diff() ([]repo.FileDiff, map[plumbing.Hash][]byte, error) {
+	changes, err := w.Status()
+	if err != nil {
+		return nil, nil, err
+	}
+	content := map[plumbing.Hash][]byte{}
+	out := make([]repo.FileDiff, 0, len(changes))
+	for _, c := range changes {
+		d := repo.FileDiff{Path: c.Path}
+		if prev, ok := w.State.Files[c.Path]; ok {
+			h, _ := plumbing.FromHex(prev.OID)
+			d.Old = &repo.FileEntry{Path: c.Path, Mode: filemode.FileMode(prev.Mode), Hash: h}
+		}
+		if c.Kind != Deleted {
+			d.New = &repo.FileEntry{Path: c.Path, Mode: c.Mode, Hash: c.OID}
+			content[c.OID] = c.Data
+		}
+		out = append(out, d)
+	}
+	return out, content, nil
+}
+
+// AddResult describes what Add brought into the workspace.
+type AddResult struct {
+	Paths []string // scope entries added
+	Files int
+	Bytes int64
+	New   []string // paths not in the base commit yet: scope only, for new files
+}
+
+// Add widens a sparse workspace: each path (file or directory) is fetched at
+// the workspace's base commit and written to disk, and joins the scope so
+// status, sync and commit see it. A path that doesn't exist yet only joins
+// the scope, so new files there can be committed. Files already on disk
+// that differ from the base are left alone and reported; nothing is written
+// then.
+func (w *Workspace) Add(ctx context.Context, r *repo.Repo, paths []string) (AddResult, error) {
+	var res AddResult
+	if len(w.State.Paths) == 0 {
+		return res, errors.New("this workspace already holds the whole repo")
+	}
+	base, ok := plumbing.FromHex(w.State.Base)
+	if !ok {
+		return res, fmt.Errorf("bad base %q in state", w.State.Base)
+	}
+	c, err := r.Commit(ctx, base)
+	if err != nil {
+		return res, err
+	}
+
+	var trees []plumbing.Hash
+	type scope struct {
+		prefix string
+		tree   plumbing.Hash
+		file   *repo.FileEntry
+	}
+	var scopes []scope
+	for _, p := range paths {
+		p = strings.Trim(filepath.ToSlash(filepath.Clean(p)), "/")
+		if p == "" || p == "." {
+			return res, errors.New("to take the whole repo, clone it again without --path")
+		}
+		if strings.HasPrefix(p, "../") || p == ".." || p == stateDir || strings.HasPrefix(p, stateDir+"/") {
+			return res, fmt.Errorf("%s is outside the workspace", p)
+		}
+		if w.inScope(p) {
+			continue // already covered
+		}
+		e, err := r.Lookup(ctx, c.TreeHash, p)
+		switch {
+		case errors.Is(err, repo.ErrNotExist):
+			res.New = append(res.New, p)
+		case err != nil:
+			return res, err
+		case e.Mode == filemode.Dir:
+			scopes = append(scopes, scope{prefix: p, tree: e.Hash})
+			trees = append(trees, e.Hash)
+		default:
+			scopes = append(scopes, scope{file: &repo.FileEntry{Path: p, Mode: e.Mode, Hash: e.Hash}})
+		}
+		res.Paths = append(res.Paths, p)
+	}
+	if err := r.EnsureTrees(ctx, trees...); err != nil {
+		return res, err
+	}
+	var files []repo.FileEntry
+	for _, s := range scopes {
+		if s.file != nil {
+			files = append(files, *s.file)
+			continue
+		}
+		if err := r.Walk(ctx, s.tree, s.prefix, func(f repo.FileEntry) error {
+			files = append(files, f)
+			return nil
+		}); err != nil {
+			return res, err
+		}
+	}
+
+	// Out-of-scope files on disk were invisible to status; refuse to clobber
+	// one that differs from the base.
+	var clash []string
+	var write []repo.FileEntry
+	for _, f := range files {
+		if _, tracked := w.State.Files[f.Path]; tracked {
+			continue // already in scope via a narrower path; may hold edits
+		}
+		fi, err := os.Lstat(w.abs(f.Path))
+		if errors.Is(err, fs.ErrNotExist) {
+			write = append(write, f)
+			continue
+		}
+		if err != nil {
+			return res, err
+		}
+		data, mode, err := readDisk(w.abs(f.Path), fi)
+		if err != nil {
+			return res, err
+		}
+		if blobHash(data) != f.Hash || mode != f.Mode {
+			clash = append(clash, f.Path)
+			continue
+		}
+		write = append(write, f) // identical: just start tracking it
+	}
+	if len(clash) > 0 {
+		sort.Strings(clash)
+		return res, fmt.Errorf("%w: %s differ from %s; move them aside first", ErrLocalConflict, strings.Join(clash, ", "), w.State.Base[:12])
+	}
+
+	blobs := make([]plumbing.Hash, len(write))
+	for i, f := range write {
+		blobs[i] = f.Hash
+	}
+	if err := r.Ensure(ctx, blobs...); err != nil {
+		return res, err
+	}
+	for _, f := range write {
+		data, err := r.Blob(ctx, f.Hash)
+		if err != nil {
+			return res, err
+		}
+		if err := w.writeFile(f.Path, f.Mode, data); err != nil {
+			return res, err
+		}
+		if err := w.record(f.Path, f.Hash, f.Mode); err != nil {
+			return res, err
+		}
+		res.Files++
+		res.Bytes += int64(len(data))
+	}
+
+	// New entries may cover old ones (adding "d" after "d/f"): keep the
+	// widest.
+	all := append(append([]string{}, w.State.Paths...), res.Paths...)
+	sort.Strings(all)
+	var merged []string
+	for _, p := range all {
+		if n := len(merged); n > 0 && (p == merged[n-1] || strings.HasPrefix(p, merged[n-1]+"/")) {
+			continue
+		}
+		merged = append(merged, p)
+	}
+	w.State.Paths = merged
+	return res, w.save()
+}

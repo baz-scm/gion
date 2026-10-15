@@ -37,6 +37,9 @@ commands:
           commit, no history, no .git. Then, inside it:
   status                               changed files vs. the clone
                                        (honors .gitignore)
+  diff    [--name-only|--name-status]  your edits as a unified diff
+  add     <path>...                    widen the workspace with more paths
+                                       (a new path just joins the scope)
   sync                                 pull upstream changes into files you
                                        haven't edited; stops on conflicts
   switch  <branch>                     move the workspace to an existing branch;
@@ -53,6 +56,9 @@ commands:
           --to: update an existing branch (compare-and-swap, retries on
           upstream moves that don't touch your paths).
 
+  diff    <remote> [<rev>] [<rev>] [--path p]... [--name-only|--name-status] [-U n]
+          what changed between two commits (a b or a..b), or what one commit
+          changed (default HEAD). only the trees and files that differ are fetched
   tag     <remote> <name> [<rev>] [-m <msg>]
           create a tag on the remote (annotated with -m); never moves one
   gc      [--max SIZE]                 trim the cache (~/.gion) now and show its
@@ -60,6 +66,8 @@ commands:
   version                              print the gion version
 
 <remote> is a URL or GitHub "owner/repo".
+<rev> is a branch, tag, HEAD or commit id, with optional ~N / ^N steps
+(main~2). Short commit ids work on GitHub.
 flags: --md  markdown output for agents
 `
 
@@ -92,6 +100,8 @@ func Main(invokedAs string, args []string) int {
 		"tag":     tag,
 		"gc":      gc,
 		"switch":  switchCmd,
+		"diff":    diff,
+		"add":     add,
 	}
 	name := args[0]
 	if name == "-v" || name == "-version" || name == "--version" {

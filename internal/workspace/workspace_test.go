@@ -419,3 +419,82 @@ func TestSwitchAndCommitToExistingBranch(t *testing.T) {
 		t.Errorf("switch to missing branch: %v", err)
 	}
 }
+
+func TestAddWidensSparseWorkspace(t *testing.T) {
+	remote, _ := testgit.Serve(t)
+	r := openRepo(t, remote)
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(ctx, r, dir, "main", []string{"d/f"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A stray out-of-scope file that differs blocks the add, untouched.
+	write(t, dir, "a.txt", "mine\n")
+	if _, err := w.Add(ctx, r, []string{"a.txt"}); !errors.Is(err, ErrLocalConflict) {
+		t.Fatalf("add over a differing file: err = %v", err)
+	}
+	if read(t, dir, "a.txt") != "mine\n" {
+		t.Fatal("add overwrote a local file")
+	}
+	os.Remove(filepath.Join(dir, "a.txt"))
+	write(t, dir, "d/f/g.txt", "edited\n") // in scope already: must survive widening
+
+	res, err := w.Add(ctx, r, []string{"d", "a.txt", "newdir"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Files != 2 { // d/e.txt and a.txt; d/f/g.txt was already tracked
+		t.Errorf("files = %d, want 2 (%+v)", res.Files, res)
+	}
+	if len(res.New) != 1 || res.New[0] != "newdir" {
+		t.Errorf("new = %v", res.New)
+	}
+	if got := strings.Join(w.State.Paths, ","); got != "a.txt,d,newdir" {
+		t.Errorf("paths = %s, want a.txt,d,newdir (d/f folded into d)", got)
+	}
+	if read(t, dir, "d/e.txt") != "e\n" {
+		t.Error("d/e.txt not written")
+	}
+	if got := kinds(mustStatus(t, w)); len(got) != 1 || got["d/f/g.txt"] != Modified {
+		t.Fatalf("after add, status = %v; want only the earlier g.txt edit", got)
+	}
+	os.WriteFile(filepath.Join(dir, "d/f/g.txt"), []byte("g\n"), 0o644)
+
+	// Added paths are part of the workspace now: edits and new files show up.
+	write(t, dir, "d/e.txt", "e2\n")
+	write(t, dir, "newdir/x.txt", "x\n")
+	if got := kinds(mustStatus(t, w)); got["d/e.txt"] != Modified || got["newdir/x.txt"] != Added || len(got) != 2 {
+		t.Fatalf("status = %v", got)
+	}
+
+	ds, content, err := w.Diff()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	if err := r.WritePatch(ctx, &buf, ds, content, 3); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []string{"-e\n+e2\n", "+++ b/newdir/x.txt", "+x\n"} {
+		if !strings.Contains(buf.String(), s) {
+			t.Errorf("patch lacks %q:\n%s", s, buf.String())
+		}
+	}
+
+	// The state persists.
+	w2, err := Find(dir)
+	if err != nil || strings.Join(w2.State.Paths, ",") != "a.txt,d,newdir" {
+		t.Fatalf("reloaded paths = %v (%v)", w2.State.Paths, err)
+	}
+}
+
+func mustStatus(t *testing.T, w *Workspace) []FileChange {
+	t.Helper()
+	cs, err := w.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cs
+}
