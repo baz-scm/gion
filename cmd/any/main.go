@@ -15,6 +15,7 @@ import (
 
 	"github.com/AnyGitForge/AnyForge/cli/internal/repo"
 	"github.com/AnyGitForge/AnyForge/cli/internal/wire"
+	"github.com/AnyGitForge/AnyForge/cli/internal/workspace"
 )
 
 const usage = `usage: any <command> <remote> [args]
@@ -23,6 +24,12 @@ commands:
   ls-refs <remote> [--prefix p]...     list remote refs (protocol v2)
   cat     <remote> <rev>:<path>        print a file's raw bytes
   ls      <remote> [<rev>[:<dir>]]     list a directory (default HEAD:)
+  clone   <remote> <dir> [--ref r] [--path p]...
+          light workspace: only the chosen paths (default all) at one
+          commit, no history, no .git. Then, inside it:
+  status                               changed files vs. the clone
+  commit  -m <msg> [--branch b]        push workspace changes; first commit
+                                       creates a branch, later ones update it
   commit  <remote> -m <msg> <path>=<local>... [--rm <path>]...
           [--branch <name> [--onto <rev>] | --to <branch>]
           build a commit from the changes and push it; no checkout needed.
@@ -48,6 +55,8 @@ func main() {
 		"cat":     cat,
 		"ls":      ls,
 		"commit":  commit,
+		"clone":   clone,
+		"status":  status,
 	}
 	name := os.Args[1]
 	if name == "-h" || name == "--help" || name == "help" {
@@ -244,8 +253,14 @@ func commit(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(pos) < 1 || *msg == "" {
-		return errors.New("usage: any commit <remote> -m <msg> <path>=<local>... [--rm <path>]...")
+	if *msg == "" {
+		return errors.New("usage: any commit [<remote>] -m <msg> [<path>=<local>...] [--rm <path>]...")
+	}
+	if len(pos) == 0 {
+		if *to != "" || len(rms) > 0 || *onto != "HEAD" {
+			return errors.New("--to, --rm and --onto are for remote mode; in a workspace just edit files")
+		}
+		return workspaceCommit(ctx, *msg, *branch, *md)
 	}
 	if *to != "" && *branch != "" {
 		return errors.New("--to and --branch are exclusive")
@@ -317,4 +332,137 @@ func compareURL(remote, branch string) string {
 		return ""
 	}
 	return strings.TrimSuffix(u, ".git") + "/compare/" + branch + "?expand=1"
+}
+
+func clone(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("clone", flag.ContinueOnError)
+	ref := fs.String("ref", "HEAD", "rev to clone")
+	md := fs.Bool("md", false, "markdown output")
+	var paths multiFlag
+	fs.Var(&paths, "path", "path to include (repeatable; default whole repo)")
+	pos, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 2 {
+		return errors.New("usage: any clone <remote> <dir> [--ref r] [--path p]...")
+	}
+	r, err := repo.Open(pos[0])
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	start := time.Now()
+	_, res, err := workspace.Clone(ctx, r, pos[1], *ref, paths)
+	if err != nil {
+		return err
+	}
+	elapsed := time.Since(start).Round(time.Millisecond)
+	scope := "whole repo"
+	if len(paths) > 0 {
+		scope = strings.Join(paths, ", ")
+	}
+	if *md {
+		fmt.Printf("## Cloned `%s` into `%s`\n\n", pos[0], pos[1])
+		fmt.Printf("- Commit: `%s` (%s)\n- Scope: %s\n", res.Commit, *ref, scope)
+		fmt.Printf("- %d files, %s, %s\n", res.Files, humanBytes(res.Bytes), elapsed)
+		fmt.Printf("- No history and no `.git`: use `any status` and `any commit` inside it.\n")
+		return nil
+	}
+	fmt.Printf("cloned %s@%s into %s: %d files, %s (%s) in %s\n", pos[0], res.Commit.String()[:12], pos[1], res.Files, humanBytes(res.Bytes), scope, elapsed)
+	return nil
+}
+
+func status(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	md := fs.Bool("md", false, "markdown output")
+	if _, err := parse(fs, args); err != nil {
+		return err
+	}
+	w, err := workspace.Find(".")
+	if err != nil {
+		return err
+	}
+	changes, err := w.Status()
+	if err != nil {
+		return err
+	}
+	st := w.State
+	target := st.Branch
+	if target == "" {
+		target = "(new branch on first commit)"
+	}
+	if *md {
+		fmt.Printf("## Workspace `%s`\n\n", st.Remote)
+		fmt.Printf("- Base: `%s` (cloned from `%s`)\n- Pushes to: `%s`\n\n", st.Base[:12], st.Ref, target)
+		if len(changes) == 0 {
+			fmt.Println("No changes.")
+			return nil
+		}
+		fmt.Println("| change | path |")
+		fmt.Println("| --- | --- |")
+		for _, c := range changes {
+			fmt.Printf("| %s | `%s` |\n", c.Kind, c.Path)
+		}
+		return nil
+	}
+	fmt.Printf("on %s @ %s -> %s\n", st.Ref, st.Base[:12], target)
+	for _, c := range changes {
+		fmt.Printf("%s\t%s\n", map[workspace.Kind]string{workspace.Added: "A", workspace.Modified: "M", workspace.Deleted: "D"}[c.Kind], c.Path)
+	}
+	return nil
+}
+
+func workspaceCommit(ctx context.Context, msg, branch string, md bool) error {
+	w, err := workspace.Find(".")
+	if err != nil {
+		return err
+	}
+	r, err := repo.Open(w.State.Remote)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	start := time.Now()
+	res, err := w.Commit(ctx, r, msg, branch)
+	if err != nil {
+		return err
+	}
+	elapsed := time.Since(start).Round(time.Millisecond)
+	branchName := res.Ref.Short()
+	if md {
+		verb := "Updated"
+		if res.Created {
+			verb = "Created"
+		}
+		fmt.Printf("## Pushed `%s`\n\n", res.Commit.String()[:12])
+		fmt.Printf("- %s branch `%s`\n- Commit: `%s`\n- Parent: `%s`\n", verb, branchName, res.Commit, res.Parent)
+		fmt.Printf("- %d changed paths, %d objects sent, %d attempt(s), %s\n", len(res.Changes), res.Objects, res.Attempts, elapsed)
+		if res.UpstreamMoved {
+			fmt.Printf("- Note: `%s` had upstream commits on other paths; files on disk don't include them yet.\n", branchName)
+		}
+		if u := compareURL(w.State.Remote, branchName); u != "" && res.Created {
+			fmt.Printf("- Open a PR: %s\n", u)
+		}
+		return nil
+	}
+	fmt.Printf("%s\t%s\n", res.Commit, res.Ref)
+	if res.UpstreamMoved {
+		fmt.Fprintf(os.Stderr, "note: %s had upstream commits on other paths; files on disk don't include them yet\n", branchName)
+	}
+	return nil
+}
+
+func humanBytes(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.1f GiB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
+	}
+	return fmt.Sprintf("%d B", n)
 }

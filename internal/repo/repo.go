@@ -13,6 +13,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/filemode"
 	"github.com/go-git/go-git/v6/plumbing/object"
+	"github.com/go-git/go-git/v6/plumbing/protocol/packp"
 
 	"github.com/AnyGitForge/AnyForge/cli/internal/cache"
 	"github.com/AnyGitForge/AnyForge/cli/internal/wire"
@@ -115,11 +116,29 @@ func (r *Repo) Ensure(ctx context.Context, hs ...plumbing.Hash) error {
 	if len(missing) == 0 {
 		return nil
 	}
+	for start := 0; start < len(missing); start += maxWants {
+		end := min(start+maxWants, len(missing))
+		if err := r.fetch(ctx, missing[start:end], wire.FilterExact); err != nil {
+			return err
+		}
+	}
+	for _, h := range missing {
+		if !r.Cache.Has(h) {
+			return fmt.Errorf("server did not send %s", h)
+		}
+	}
+	return nil
+}
+
+// maxWants caps object ids per fetch request.
+const maxWants = 1000
+
+func (r *Repo) fetch(ctx context.Context, wants []plumbing.Hash, filter packp.Filter) error {
 	s, err := r.session(ctx)
 	if err != nil {
 		return err
 	}
-	objs, err := s.Fetch(ctx, missing, wire.FilterExact)
+	objs, err := s.Fetch(ctx, wants, filter)
 	if err != nil {
 		return err
 	}
@@ -128,9 +147,47 @@ func (r *Repo) Ensure(ctx context.Context, hs ...plumbing.Hash) error {
 			return err
 		}
 	}
-	for _, h := range missing {
-		if !r.Cache.Has(h) {
-			return fmt.Errorf("server did not send %s", h)
+	return nil
+}
+
+// EnsureTrees fetches every tree under the given trees in one round trip
+// per call (filter blob:none), so whole-directory walks need no further
+// requests. Trees already cached are not skipped: the server can't be told
+// which subtrees we have without commit history.
+func (r *Repo) EnsureTrees(ctx context.Context, roots ...plumbing.Hash) error {
+	if len(roots) == 0 {
+		return nil
+	}
+	return r.fetch(ctx, roots, wire.FilterNoBlobs)
+}
+
+// FileEntry is one file found by Walk.
+type FileEntry struct {
+	Path string
+	Mode filemode.FileMode
+	Hash plumbing.Hash
+}
+
+// Walk lists every file under tree h (from cache; call EnsureTrees first),
+// with paths prefixed by prefix. Submodules are skipped.
+func (r *Repo) Walk(ctx context.Context, h plumbing.Hash, prefix string, fn func(FileEntry) error) error {
+	t, err := r.Tree(ctx, h)
+	if err != nil {
+		return err
+	}
+	for _, e := range t.Entries {
+		p := path.Join(prefix, e.Name)
+		switch e.Mode {
+		case filemode.Dir:
+			if err := r.Walk(ctx, e.Hash, p, fn); err != nil {
+				return err
+			}
+		case filemode.Submodule:
+			continue
+		default:
+			if err := fn(FileEntry{Path: p, Mode: e.Mode, Hash: e.Hash}); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

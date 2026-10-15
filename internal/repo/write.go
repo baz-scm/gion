@@ -29,6 +29,8 @@ type Change struct {
 	Path   string
 	Data   []byte
 	Delete bool
+	// Mode for the file; zero keeps the existing mode (or regular if new).
+	Mode filemode.FileMode
 }
 
 func cleanPath(p string) (string, error) {
@@ -130,6 +132,9 @@ func (n *newObjects) buildTree(ctx context.Context, h plumbing.Hash, changes map
 		mode := filemode.Regular
 		if exists {
 			mode = entries[i].Mode // keep executable bit / symlink
+		}
+		if c.Mode != 0 {
+			mode = c.Mode
 		}
 		set[name] = &object.TreeEntry{Name: name, Mode: mode, Hash: bh}
 	}
@@ -286,6 +291,10 @@ type CommitOptions struct {
 	// To updates an existing branch with compare-and-swap, rebasing onto
 	// upstream moves that don't touch our paths.
 	To string
+	// Base is the commit the changes were made against. With To, an
+	// upstream tip that differs from Base is accepted only if it left our
+	// paths alone. Zero means "the tip when we start".
+	Base plumbing.Hash
 }
 
 // CommitResult is what was pushed.
@@ -339,7 +348,7 @@ func (r *Repo) CommitAndPush(ctx context.Context, o CommitOptions) (CommitResult
 	}
 
 	ref := plumbing.NewBranchReferenceName(o.To)
-	var firstBase plumbing.Hash
+	firstBase := o.Base
 	for attempt := 1; ; attempt++ {
 		tip, err := r.Resolve(ctx, ref.String())
 		if err != nil {
@@ -347,8 +356,10 @@ func (r *Repo) CommitAndPush(ctx context.Context, o CommitOptions) (CommitResult
 		}
 		if firstBase.IsZero() {
 			firstBase = tip
-		} else if err := r.checkUntouched(ctx, firstBase, tip, o.Changes); err != nil {
-			return CommitResult{}, err
+		} else if tip != firstBase {
+			if err := r.checkUntouched(ctx, firstBase, tip, o.Changes); err != nil {
+				return CommitResult{}, err
+			}
 		}
 		b, err := r.build(ctx, tip, o.Changes, o.Message, o.Author)
 		if err != nil {
