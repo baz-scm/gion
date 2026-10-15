@@ -39,6 +39,8 @@ commands:
           --to: update an existing branch (compare-and-swap, retries on
           upstream moves that don't touch your paths).
 
+  version                              print the gion version
+
 <remote> is a URL or GitHub "owner/repo".
 flags: --md  markdown output for agents
 `
@@ -66,6 +68,7 @@ func Main(invokedAs string, args []string) int {
 		"clone":   clone,
 		"status":  status,
 		"sync":    sync,
+		"version": versionCmd,
 	}
 	name := args[0]
 	if name == "-h" || name == "--help" || name == "help" {

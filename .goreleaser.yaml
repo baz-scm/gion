@@ -1,0 +1,34 @@
+version: 2
+project_name: gion
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - main: .
+    binary: gion
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .FullCommit }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [README.md, LICENSE]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+
+release:
+  # v0.x and tags like v0.3.0-rc.1 are marked pre-release.
+  prerelease: auto

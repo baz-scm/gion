@@ -27,6 +27,8 @@ gion applies the client half of that idea to existing git servers.
 go install github.com/baz-scm/gion@latest
 ```
 
+Or download a prebuilt binary for Linux or macOS from [Releases](https://github.com/baz-scm/gion/releases). Run `gion version` to see what you have.
+
 Credentials are borrowed, never stored. gion tries, in order: the `GION_TOKEN` environment variable, then `gh auth token`, then your `git credential` helper.
 
 ## Commands
@@ -69,7 +71,18 @@ Set `GION_TRACE=1` to log each request's protocol lines and timings to stderr.
 ```sh
 go test ./...     # integration tests need `git` on PATH
 go build -o bin/gion .
+gion version
 ```
+
+## Releasing
+
+Tag a commit on `main` and push the tag:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The release workflow runs the full CI on that exact commit, checks the tag is on `main`, then GoReleaser publishes binaries and checksums to GitHub Releases. If CI fails, nothing is published. `go install …@latest` picks up the new tag through the Go module proxy, which caches tags permanently, so never move or delete a pushed tag; tag a new version instead. Every CI run also does a GoReleaser dry run, so a broken release config fails before tag time.
 
 ## License
 

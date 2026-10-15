@@ -9,4 +9,14 @@ import (
 	"github.com/baz-scm/gion/internal/cli"
 )
 
-func main() { os.Exit(cli.Main("gion", os.Args[1:])) }
+// Set by the release build (-ldflags -X). `go install` builds fall back to
+// the module version from the build info.
+var (
+	version = ""
+	commit  = ""
+)
+
+func main() {
+	cli.SetVersion(version, commit)
+	os.Exit(cli.Main("gion", os.Args[1:]))
+}

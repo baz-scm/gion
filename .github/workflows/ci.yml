@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The release workflow calls this, so a release can't ship unless CI
+  # passes on the exact tagged commit.
+  workflow_call:
 
 permissions:
   contents: read
@@ -22,3 +25,19 @@ jobs:
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - run: go test -race ./...
+
+  # Builds every release artifact without publishing, so a broken
+  # .goreleaser.yaml fails here instead of at tag time.
+  release-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean
