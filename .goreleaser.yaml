@@ -30,5 +30,5 @@ changelog:
   sort: asc
 
 release:
-  # v0.x and tags like v0.3.0-rc.1 are marked pre-release.
+  # Tags with a pre-release suffix (v0.3.0-rc.1) are marked pre-release.
   prerelease: auto

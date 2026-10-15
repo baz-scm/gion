@@ -172,3 +172,50 @@ func TestIdentityFromEnv(t *testing.T) {
 		t.Errorf("committer tz offset = %d", off)
 	}
 }
+
+func TestTagCreatesAndNeverMoves(t *testing.T) {
+	remote, clone := testgit.Serve(t)
+	r := openTest(t, remote)
+	ctx := context.Background()
+	head := testgit.Run(t, clone, "rev-parse", "HEAD")
+
+	light, err := r.Tag(ctx, TagOptions{Name: "v0.1.0", Who: who})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if light.Object.String() != head {
+		t.Errorf("lightweight tag points at %s, want %s", light.Object, head)
+	}
+
+	ann, err := r.Tag(ctx, TagOptions{Name: "v0.2.0", Rev: "main", Message: "release v0.2.0", Who: who})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ann.Object == ann.Commit {
+		t.Error("annotated tag should be a tag object, not the commit")
+	}
+
+	testgit.Run(t, clone, "fetch", "-q", "--tags", "origin")
+	if got := testgit.Run(t, clone, "cat-file", "-t", "v0.1.0"); got != "commit" {
+		t.Errorf("v0.1.0 type = %s", got)
+	}
+	if got := testgit.Run(t, clone, "cat-file", "-t", "v0.2.0"); got != "tag" {
+		t.Errorf("v0.2.0 type = %s", got)
+	}
+	if got := testgit.Run(t, clone, "rev-parse", "v0.2.0^{commit}"); got != head {
+		t.Errorf("v0.2.0 peels to %s, want %s", got, head)
+	}
+	if got := testgit.Run(t, clone, "tag", "-l", "--format=%(contents:subject)|%(taggername)", "v0.2.0"); got != "release v0.2.0|gion" {
+		t.Errorf("tag contents = %q", got)
+	}
+	testgit.Run(t, clone, "fsck", "--strict")
+
+	// Re-using a version is refused, and the tag doesn't move.
+	_, err = r.Tag(ctx, TagOptions{Name: "v0.1.0", Rev: "main", Message: "again", Who: who})
+	if !errors.Is(err, ErrTagExists) {
+		t.Fatalf("err = %v, want ErrTagExists", err)
+	}
+	if _, err := r.Tag(ctx, TagOptions{Name: "bad..name", Who: who}); err == nil {
+		t.Error("invalid tag name accepted")
+	}
+}

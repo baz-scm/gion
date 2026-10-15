@@ -47,6 +47,7 @@ Credentials are borrowed, never stored. gion tries, in order: the `GION_TOKEN` e
 | `status` | Inside a workspace: added, modified and deleted files. Untracked files matched by `.gitignore` are skipped. |
 | `sync` | Inside a workspace: bring files up to date with the branch. Files you've edited are kept; if upstream changed them too, nothing is written and the conflicting paths are listed. |
 | `commit -m <msg> [--branch b]` | Inside a workspace: push your changes. The first commit creates a branch (`gion/<timestamp>` by default); later commits update it. If someone else pushed to the branch on other files, their changes are written to disk too. |
+| `tag <remote> <name> [<rev>] [-m msg]` | Create a tag on the remote, annotated if `-m` is given. Refuses to move an existing tag. |
 | `commit <remote> -m <msg> <path>=<file>... [--rm p]` | Commit without any workspace. `--to <branch>` updates an existing branch instead of creating one; `--orphan` makes a root commit (e.g. in an empty repo). |
 
 Add `--md` for Markdown output that agents can read.
@@ -90,13 +91,13 @@ gion version
 
 ## Releasing
 
-Tag a commit on `main` and push the tag:
+Tag a commit on `main`, with gion:
 
 ```sh
-git tag v0.2.0 && git push origin v0.2.0
+gion tag baz-scm/gion v0.2.0 -m "v0.2.0"     # tags main's HEAD; add a rev to tag another commit
 ```
 
-The release workflow runs the full CI on that exact commit, checks the tag is on `main`, then GoReleaser publishes binaries and checksums to GitHub Releases. If CI fails, nothing is published. `go install …@latest` picks up the new tag through the Go module proxy, which caches tags permanently, so never move or delete a pushed tag; tag a new version instead. Every CI run also does a GoReleaser dry run, so a broken release config fails before tag time.
+The release workflow runs the full CI on that exact commit, checks the tag is on `main`, then GoReleaser publishes binaries and checksums to GitHub Releases. If CI fails, nothing is published. `go install …@latest` picks up the new tag through the Go module proxy, which caches tags permanently, so never move or delete a pushed tag; tag a new version instead. (`gion tag` only creates tags and refuses an existing name.) Every CI run also does a GoReleaser dry run, so a broken release config fails before tag time.
 
 ## License
 

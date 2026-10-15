@@ -45,6 +45,8 @@ commands:
           --to: update an existing branch (compare-and-swap, retries on
           upstream moves that don't touch your paths).
 
+  tag     <remote> <name> [<rev>] [-m <msg>]
+          create a tag on the remote (annotated with -m); never moves one
   version                              print the gion version
 
 <remote> is a URL or GitHub "owner/repo".
@@ -77,6 +79,7 @@ func Main(invokedAs string, args []string) int {
 		"version": versionCmd,
 		"find":    find,
 		"grep":    grep,
+		"tag":     tag,
 	}
 	name := args[0]
 	if name == "-h" || name == "--help" || name == "help" {
