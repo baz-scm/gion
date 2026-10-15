@@ -2,8 +2,10 @@ package workspace
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/baz-scm/gion/internal/cache"
@@ -128,5 +130,210 @@ func TestSparseCloneIgnoresOutOfScope(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "stray.txt"), []byte("x"), 0o644)
 	if cs, _ := w.Status(); len(cs) != 0 {
 		t.Fatalf("out-of-scope files reported: %v", kinds(cs))
+	}
+}
+
+func write(t *testing.T, dir, p, content string) {
+	t.Helper()
+	abs := filepath.Join(dir, filepath.FromSlash(p))
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// pushUpstream commits files (content "" deletes) to branch from the clone.
+func pushUpstream(t *testing.T, clone, branch string, files map[string]string) {
+	t.Helper()
+	testgit.Run(t, clone, "fetch", "-q", "origin", branch)
+	testgit.Run(t, clone, "checkout", "-q", "-B", branch, "FETCH_HEAD")
+	for p, c := range files {
+		if c == "" {
+			testgit.Run(t, clone, "rm", "-q", p)
+			continue
+		}
+		write(t, clone, p, c)
+		testgit.Run(t, clone, "add", p)
+	}
+	testgit.Run(t, clone, "commit", "-qm", "upstream")
+	testgit.Run(t, clone, "push", "-q", "origin", "HEAD:"+branch)
+}
+
+func read(t *testing.T, dir, p string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(p)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func TestStatusHonorsGitignore(t *testing.T) {
+	remote, _ := testgit.Serve(t)
+	r := openRepo(t, remote)
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(context.Background(), r, dir, "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	write(t, dir, ".gitignore", "build/\n*.log\na.txt\nd/\n")
+	write(t, dir, "build/out.bin", "x")
+	write(t, dir, "x.log", "x")
+	write(t, dir, "keep.txt", "k")
+	write(t, dir, "sub/.gitignore", "*.tmp\n")
+	write(t, dir, "sub/s.tmp", "x")
+	write(t, dir, "sub/s.go", "x")
+	write(t, dir, "a.txt", "tracked files stay tracked\n")          // tracked, matches a.txt
+	write(t, dir, "d/e.txt", "tracked inside an ignored dir\n")     // tracked, under ignored d/
+	write(t, dir, "d/new.txt", "untracked inside an ignored dir\n") // ignored
+
+	cs, err := w.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]Kind{".gitignore": Added, "keep.txt": Added, "sub/.gitignore": Added, "sub/s.go": Added, "a.txt": Modified, "d/e.txt": Modified}
+	got := kinds(cs)
+	if len(got) != len(want) {
+		t.Fatalf("status = %v\nwant     %v", got, want)
+	}
+	for p, k := range want {
+		if got[p] != k {
+			t.Errorf("%s: %q, want %q", p, got[p], k)
+		}
+	}
+}
+
+func TestSyncPullsUpstreamAndKeepsLocalEdits(t *testing.T) {
+	remote, clone := testgit.Serve(t)
+	r := openRepo(t, remote)
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(context.Background(), r, dir, "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	write(t, dir, "a.txt", "local edit\n")
+	pushUpstream(t, clone, "main", map[string]string{"b.txt": "b2\n", "d/f/g.txt": "", "n/new.txt": "new\n"})
+
+	res, err := w.Sync(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(res.Updated, ","); got != "b.txt,n/new.txt" {
+		t.Errorf("updated = %s", got)
+	}
+	if got := strings.Join(res.Removed, ","); got != "d/f/g.txt" {
+		t.Errorf("removed = %s", got)
+	}
+	if read(t, dir, "b.txt") != "b2\n" || read(t, dir, "n/new.txt") != "new\n" {
+		t.Error("upstream content not on disk")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "d", "f")); !os.IsNotExist(err) {
+		t.Error("empty dir d/f not pruned")
+	}
+	if read(t, dir, "a.txt") != "local edit\n" {
+		t.Error("local edit lost")
+	}
+	cs, _ := w.Status()
+	if got := kinds(cs); len(got) != 1 || got["a.txt"] != Modified {
+		t.Errorf("status after sync = %v, want only a.txt modified", got)
+	}
+	tip := testgit.Run(t, clone, "rev-parse", "HEAD")
+	if w.State.Base != tip {
+		t.Errorf("base = %s, want %s", w.State.Base, tip)
+	}
+
+	// Reopened state agrees, and a second sync is a no-op.
+	w2, _ := Find(dir)
+	if res, err := w2.Sync(context.Background(), r); err != nil || res.From != res.To {
+		t.Errorf("second sync: %v %+v", err, res)
+	}
+}
+
+func TestSyncStopsOnConflict(t *testing.T) {
+	remote, clone := testgit.Serve(t)
+	r := openRepo(t, remote)
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(context.Background(), r, dir, "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := w.State.Base
+
+	write(t, dir, "a.txt", "ours\n")
+	pushUpstream(t, clone, "main", map[string]string{"a.txt": "theirs\n", "b.txt": "b2\n"})
+
+	_, err = w.Sync(context.Background(), r)
+	if !errors.Is(err, ErrLocalConflict) || !strings.Contains(err.Error(), "a.txt") {
+		t.Fatalf("err = %v, want conflict on a.txt", err)
+	}
+	if read(t, dir, "a.txt") != "ours\n" || read(t, dir, "b.txt") != "b\n" {
+		t.Error("sync changed files despite the conflict")
+	}
+	if w.State.Base != base {
+		t.Error("base moved despite the conflict")
+	}
+}
+
+func TestSyncRespectsSparseScope(t *testing.T) {
+	remote, clone := testgit.Serve(t)
+	r := openRepo(t, remote)
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(context.Background(), r, dir, "main", []string{"d"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pushUpstream(t, clone, "main", map[string]string{"a.txt": "outside\n", "d/e.txt": "inside\n"})
+
+	res, err := w.Sync(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(res.Updated, ","); got != "d/e.txt" {
+		t.Errorf("updated = %s, want only d/e.txt", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "a.txt")); !os.IsNotExist(err) {
+		t.Error("out-of-scope a.txt was written")
+	}
+}
+
+func TestCommitPullsUpstreamOnOtherPaths(t *testing.T) {
+	t.Setenv("GIT_AUTHOR_NAME", "gion")
+	t.Setenv("GIT_AUTHOR_EMAIL", "gion@test")
+	remote, clone := testgit.Serve(t)
+	r := openRepo(t, remote)
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(ctx, r, dir, "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, "a.txt", "first\n")
+	if _, err := w.Commit(ctx, r, "first", "ws"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Someone else pushes to our branch, on a different file.
+	pushUpstream(t, clone, "ws", map[string]string{"b.txt": "theirs\n"})
+
+	write(t, dir, "a.txt", "second\n")
+	res, err := w.Commit(ctx, r, "second", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(res.Pulled.Updated, ","); got != "b.txt" {
+		t.Errorf("pulled = %q, want b.txt", got)
+	}
+	if read(t, dir, "b.txt") != "theirs\n" {
+		t.Error("upstream b.txt not on disk")
+	}
+	if cs, _ := w.Status(); len(cs) != 0 {
+		t.Errorf("status after commit = %v, want clean", kinds(cs))
+	}
+	if w.State.Base != res.Commit.String() {
+		t.Error("base is not the pushed commit")
 	}
 }

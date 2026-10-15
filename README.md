@@ -8,7 +8,8 @@ gion clone baz-scm/baz ./baz --path demos                     # sparse workspace
 cd baz && $EDITOR demos/x.md && gion commit -m "edit" --md    # push from the workspace
 ```
 
-> Status: early. It works against GitHub, but the commands and on-disk formats will change.
+> [!WARNING]
+> **Beta.** gion works against GitHub today, but commands, flags and the on-disk formats (`.gion/`, the object cache) may change between releases without a migration path. Try it on branches, not on anything you can't recreate.
 
 ## Why
 
@@ -38,9 +39,10 @@ Credentials are borrowed, never stored. gion tries, in order: the `GION_TOKEN` e
 | `cat <remote> <rev>:<path>` | Print a file's raw bytes. |
 | `ls <remote> [<rev>[:<dir>]]` | List a directory. The output matches `git ls-tree`. |
 | `clone <remote> <dir> [--path p]...` | Create a workspace with only the chosen paths (default: everything) at one commit. It has no history and no `.git` directory. |
-| `status` | Inside a workspace: added, modified and deleted files. |
-| `commit -m <msg> [--branch b]` | Inside a workspace: push your changes. The first commit creates a branch (`gion/<timestamp>` by default); later commits update it. |
-| `commit <remote> -m <msg> <path>=<file>... [--rm p]` | Commit without any workspace. `--to <branch>` updates an existing branch instead of creating one. |
+| `status` | Inside a workspace: added, modified and deleted files. Untracked files matched by `.gitignore` are skipped. |
+| `sync` | Inside a workspace: bring files up to date with the branch. Files you've edited are kept; if upstream changed them too, nothing is written and the conflicting paths are listed. |
+| `commit -m <msg> [--branch b]` | Inside a workspace: push your changes. The first commit creates a branch (`gion/<timestamp>` by default); later commits update it. If someone else pushed to the branch on other files, their changes are written to disk too. |
+| `commit <remote> -m <msg> <path>=<file>... [--rm p]` | Commit without any workspace. `--to <branch>` updates an existing branch instead of creating one; `--orphan` makes a root commit (e.g. in an empty repo). |
 
 Add `--md` for Markdown output that agents can read.
 
@@ -57,8 +59,7 @@ Set `GION_TRACE=1` to log each request's protocol lines and timings to stderr.
 
 ## Limitations
 
-- **Clones don't follow upstream.** If others push to your branch, `commit` still succeeds when they touched other files, but the files on disk don't update. There is no `sync` command yet.
-- **`.gitignore` is not honored** by `status` or workspace `commit` yet.
+- **No merging.** `sync` and `commit` refuse when upstream changed the same files you edited; resolve by committing elsewhere or undoing the edit.
 - **Commits are unsigned.**
 - **Searching file contents across a whole repo isn't supported yet.** The plan: index all file paths from the trees (about 18 MB for chromium), scan contents for scoped searches, and use the forge's code search for whole-repo searches.
 - **Full-repo clones are slower than `git clone --depth 1`.** Fetching only the paths you need is the intended use.

@@ -15,9 +15,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-git/go-billy/v6"
+	"github.com/go-git/go-billy/v6/osfs"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/filemode"
 	format "github.com/go-git/go-git/v6/plumbing/format/config"
+	"github.com/go-git/go-git/v6/plumbing/format/gitignore"
 
 	"github.com/baz-scm/gion/internal/repo"
 )
@@ -271,28 +274,56 @@ func readDisk(abs string, fi fs.FileInfo) ([]byte, filemode.FileMode, error) {
 	return data, mode, err
 }
 
+// relevantDir reports whether dir may contain in-scope files.
+func (w *Workspace) relevantDir(dir string) bool {
+	if dir == "" || w.inScope(dir) {
+		return true
+	}
+	for _, s := range w.State.Paths {
+		if strings.HasPrefix(s, dir+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// ignores builds the root .gitignore scope: global core.excludesFile
+// patterns, then the workspace's root .gitignore.
+func (w *Workspace) ignores() (*gitignore.Scope, billy.Filesystem, error) {
+	fsys := osfs.New(w.Dir)
+	var base []gitignore.Pattern
+	if g, err := gitignore.LoadGlobalPatterns(osfs.New("/")); err == nil {
+		base = append(base, g...)
+	}
+	root, err := gitignore.DirPatterns(fsys, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	return gitignore.NewScope(append(base, root...)), fsys, nil
+}
+
 // Status compares disk to the index. Files outside the chosen paths are
-// ignored, so a sparse workspace never reports them as deleted.
+// skipped, so a sparse workspace never reports them as deleted. Untracked
+// files matched by .gitignore are skipped too; tracked files are always
+// checked, as in git.
 func (w *Workspace) Status() ([]FileChange, error) {
+	scope, fsys, err := w.ignores()
+	if err != nil {
+		return nil, err
+	}
 	var out []FileChange
 	seen := map[string]bool{}
-	err := filepath.WalkDir(w.Dir, func(abs string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, _ := filepath.Rel(w.Dir, abs)
-		rel = filepath.ToSlash(rel)
-		if d.IsDir() {
-			if rel == stateDir || d.Name() == ".git" {
-				return filepath.SkipDir
+
+	check := func(rel string) error {
+		seen[rel] = true
+		abs := w.abs(rel)
+		fi, err := os.Lstat(abs)
+		if errors.Is(err, fs.ErrNotExist) {
+			if _, tracked := w.State.Files[rel]; tracked {
+				out = append(out, FileChange{Path: rel, Kind: Deleted})
 			}
 			return nil
 		}
-		if !w.inScope(rel) {
-			return nil
-		}
-		seen[rel] = true
-		fi, err := os.Lstat(abs)
 		if err != nil {
 			return err
 		}
@@ -312,13 +343,58 @@ func (w *Workspace) Status() ([]FileChange, error) {
 			out = append(out, FileChange{Path: rel, Kind: Modified, Mode: mode, Data: data, OID: oid})
 		}
 		return nil
-	})
-	if err != nil {
+	}
+
+	var walk func(dir []string, sc *gitignore.Scope) error
+	walk = func(dir []string, sc *gitignore.Scope) error {
+		entries, err := os.ReadDir(filepath.Join(append([]string{w.Dir}, dir...)...))
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if name == ".git" || (len(dir) == 0 && name == stateDir) {
+				continue
+			}
+			p := append(append([]string{}, dir...), name)
+			rel := strings.Join(p, "/")
+			if e.IsDir() {
+				if !w.relevantDir(rel) {
+					continue
+				}
+				child, err := sc.Descend(p, func() ([]gitignore.Pattern, error) { return gitignore.DirPatterns(fsys, p) })
+				if err != nil {
+					return err
+				}
+				if child.Excluded() {
+					continue // tracked files inside are checked below
+				}
+				if err := walk(p, child); err != nil {
+					return err
+				}
+				continue
+			}
+			if !w.inScope(rel) {
+				continue
+			}
+			if _, tracked := w.State.Files[rel]; !tracked && sc.Match(p, false) {
+				continue
+			}
+			if err := check(rel); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := walk(nil, scope); err != nil {
 		return nil, err
 	}
+	// Tracked files the walk didn't reach: deleted, or inside an ignored dir.
 	for p := range w.State.Files {
 		if !seen[p] {
-			out = append(out, FileChange{Path: p, Kind: Deleted})
+			if err := check(p); err != nil {
+				return nil, err
+			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
@@ -329,13 +405,15 @@ func (w *Workspace) Status() ([]FileChange, error) {
 type CommitResult struct {
 	repo.CommitResult
 	Changes []FileChange
-	// UpstreamMoved is set when the branch had commits we didn't have; they
-	// touched other paths (or we'd have failed), but disk doesn't show them.
-	UpstreamMoved bool
+	// Pulled lists files updated on disk because the branch had upstream
+	// commits on other paths when we pushed.
+	Pulled SyncResult
 }
 
 // Commit pushes every change in the workspace. The first commit creates
-// branch (gion/<timestamp> if empty); later ones update it with CAS.
+// branch (gion/<timestamp> if empty); later ones update it with CAS. If the
+// branch had moved on other paths, those upstream changes are written to disk
+// too, so the workspace matches the new commit.
 func (w *Workspace) Commit(ctx context.Context, r *repo.Repo, msg, branch string) (CommitResult, error) {
 	changes, err := w.Status()
 	if err != nil {
@@ -370,8 +448,7 @@ func (w *Workspace) Commit(ctx context.Context, r *repo.Repo, msg, branch string
 	if err != nil {
 		return CommitResult{}, err
 	}
-	out := CommitResult{CommitResult: res, Changes: changes, UpstreamMoved: res.Parent != base}
-	w.State.Base = res.Commit.String()
+	out := CommitResult{CommitResult: res, Changes: changes}
 	w.State.Branch = res.Ref.Short()
 	for _, c := range changes {
 		if c.Kind == Deleted {
@@ -382,5 +459,144 @@ func (w *Workspace) Commit(ctx context.Context, r *repo.Repo, msg, branch string
 			return out, err
 		}
 	}
+	if res.Parent != base {
+		// Upstream moved on paths we didn't touch (CommitAndPush checked).
+		// Bring them onto disk; our own files are already recorded.
+		pulled, err := w.applyUpstream(ctx, r, base, res.Parent, nil)
+		out.Pulled = pulled
+		if err != nil {
+			return out, fmt.Errorf("pushed %s, but updating files from upstream failed (run `gion sync`): %w", res.Commit.String()[:12], err)
+		}
+	}
+	w.State.Base = res.Commit.String()
 	return out, w.save()
+}
+
+// ErrLocalConflict means upstream changed files that also have local edits.
+var ErrLocalConflict = errors.New("local changes conflict with upstream")
+
+// SyncResult describes what sync changed on disk.
+type SyncResult struct {
+	From, To plumbing.Hash
+	Updated  []string // added or modified upstream
+	Removed  []string // deleted upstream
+}
+
+// Sync brings the workspace up to date with its branch (or the cloned ref
+// before the first commit). Local edits are kept; if upstream changed the
+// same files differently, nothing is written and ErrLocalConflict lists them.
+func (w *Workspace) Sync(ctx context.Context, r *repo.Repo) (SyncResult, error) {
+	target := w.State.Ref
+	if w.State.Branch != "" {
+		target = "refs/heads/" + w.State.Branch
+	}
+	tip, err := r.Resolve(ctx, target)
+	if err != nil {
+		return SyncResult{}, err
+	}
+	base, _ := plumbing.FromHex(w.State.Base)
+	if tip == base {
+		return SyncResult{From: base, To: tip}, nil
+	}
+	local, err := w.Status()
+	if err != nil {
+		return SyncResult{}, err
+	}
+	res, err := w.applyUpstream(ctx, r, base, tip, local)
+	if err != nil {
+		return res, err
+	}
+	w.State.Base = tip.String()
+	return res, w.save()
+}
+
+// applyUpstream writes the in-scope differences between commits from and to
+// onto disk. Files in local (pending edits) are left alone; if upstream also
+// changed one of them to something else, nothing is written at all.
+func (w *Workspace) applyUpstream(ctx context.Context, r *repo.Repo, from, to plumbing.Hash, local []FileChange) (SyncResult, error) {
+	res := SyncResult{From: from, To: to}
+	fc, err := r.Commit(ctx, from)
+	if err != nil {
+		return res, err
+	}
+	tc, err := r.Commit(ctx, to)
+	if err != nil {
+		return res, err
+	}
+	edits := map[string]FileChange{}
+	for _, c := range local {
+		edits[c.Path] = c
+	}
+
+	type update struct {
+		path  string
+		entry *repo.FileEntry
+	}
+	var updates []update
+	var conflicts []string
+	err = r.DiffTrees(ctx, fc.TreeHash, tc.TreeHash, w.relevantDir, func(p string, _, n *repo.FileEntry) error {
+		if !w.inScope(p) {
+			return nil
+		}
+		if e, edited := edits[p]; edited {
+			same := (n == nil && e.Kind == Deleted) || (n != nil && e.Kind != Deleted && e.OID == n.Hash && e.Mode == n.Mode)
+			if !same {
+				conflicts = append(conflicts, p)
+			}
+			return nil // keep the local version (identical, or a conflict)
+		}
+		updates = append(updates, update{p, n})
+		return nil
+	})
+	if err != nil {
+		return res, err
+	}
+	if len(conflicts) > 0 {
+		sort.Strings(conflicts)
+		return res, fmt.Errorf("%w: %s", ErrLocalConflict, strings.Join(conflicts, ", "))
+	}
+
+	var blobs []plumbing.Hash
+	for _, u := range updates {
+		if u.entry != nil {
+			blobs = append(blobs, u.entry.Hash)
+		}
+	}
+	if err := r.Ensure(ctx, blobs...); err != nil {
+		return res, err
+	}
+	for _, u := range updates {
+		if u.entry == nil {
+			if err := os.Remove(w.abs(u.path)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return res, err
+			}
+			w.pruneEmptyDirs(u.path)
+			delete(w.State.Files, u.path)
+			res.Removed = append(res.Removed, u.path)
+			continue
+		}
+		data, err := r.Blob(ctx, u.entry.Hash)
+		if err != nil {
+			return res, err
+		}
+		if err := w.writeFile(u.path, u.entry.Mode, data); err != nil {
+			return res, err
+		}
+		if err := w.record(u.path, u.entry.Hash, u.entry.Mode); err != nil {
+			return res, err
+		}
+		res.Updated = append(res.Updated, u.path)
+	}
+	sort.Strings(res.Updated)
+	sort.Strings(res.Removed)
+	return res, nil
+}
+
+// pruneEmptyDirs removes now-empty parent directories of p, up to the root.
+func (w *Workspace) pruneEmptyDirs(p string) {
+	for d := filepath.Dir(w.abs(p)); d != w.Dir && strings.HasPrefix(d, w.Dir); d = filepath.Dir(d) {
+		if os.Remove(d) != nil { // fails unless empty
+			return
+		}
+	}
 }

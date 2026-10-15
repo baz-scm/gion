@@ -27,6 +27,9 @@ commands:
           light workspace: only the chosen paths (default all) at one
           commit, no history, no .git. Then, inside it:
   status                               changed files vs. the clone
+                                       (honors .gitignore)
+  sync                                 pull upstream changes into files you
+                                       haven't edited; stops on conflicts
   commit  -m <msg> [--branch b]        push workspace changes; first commit
                                        creates a branch, later ones update it
   commit  <remote> -m <msg> <path>=<local>... [--rm <path>]...
@@ -62,6 +65,7 @@ func Main(invokedAs string, args []string) int {
 		"commit":  commit,
 		"clone":   clone,
 		"status":  status,
+		"sync":    sync,
 	}
 	name := args[0]
 	if name == "-h" || name == "--help" || name == "help" {
@@ -450,8 +454,8 @@ func workspaceCommit(ctx context.Context, msg, branch string, md bool) error {
 		fmt.Printf("## Pushed `%s`\n\n", res.Commit.String()[:12])
 		fmt.Printf("- %s branch `%s`\n- Commit: `%s`\n- Parent: `%s`\n", verb, branchName, res.Commit, res.Parent)
 		fmt.Printf("- %d changed paths, %d objects sent, %d attempt(s), %s\n", len(res.Changes), res.Objects, res.Attempts, elapsed)
-		if res.UpstreamMoved {
-			fmt.Printf("- Note: `%s` had upstream commits on other paths; files on disk don't include them yet.\n", branchName)
+		if n := len(res.Pulled.Updated) + len(res.Pulled.Removed); n > 0 {
+			fmt.Printf("- `%s` had upstream commits on other paths; updated %d file(s) on disk to match.\n", branchName, n)
 		}
 		if u := compareURL(w.State.Remote, branchName); u != "" && res.Created {
 			fmt.Printf("- Open a PR: %s\n", u)
@@ -459,8 +463,62 @@ func workspaceCommit(ctx context.Context, msg, branch string, md bool) error {
 		return nil
 	}
 	fmt.Printf("%s\t%s\n", res.Commit, res.Ref)
-	if res.UpstreamMoved {
-		fmt.Fprintf(os.Stderr, "note: %s had upstream commits on other paths; files on disk don't include them yet\n", branchName)
+	if n := len(res.Pulled.Updated) + len(res.Pulled.Removed); n > 0 {
+		fmt.Fprintf(os.Stderr, "note: %s had upstream commits on other paths; updated %d file(s) on disk\n", branchName, n)
+	}
+	return nil
+}
+
+func sync(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("sync", flag.ContinueOnError)
+	md := fs.Bool("md", false, "markdown output")
+	if _, err := parse(fs, args); err != nil {
+		return err
+	}
+	w, err := workspace.Find(".")
+	if err != nil {
+		return err
+	}
+	r, err := repo.Open(w.State.Remote)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	res, err := w.Sync(ctx, r)
+	if err != nil {
+		if errors.Is(err, workspace.ErrLocalConflict) {
+			return fmt.Errorf("%w\nnothing was changed; commit or undo those edits, then sync again", err)
+		}
+		return err
+	}
+	if res.From == res.To {
+		if *md {
+			fmt.Printf("Already up to date at `%s`.\n", res.To.String()[:12])
+		} else {
+			fmt.Printf("up to date at %s\n", res.To.String()[:12])
+		}
+		return nil
+	}
+	if *md {
+		fmt.Printf("## Synced `%s` → `%s`\n\n", res.From.String()[:12], res.To.String()[:12])
+		if len(res.Updated)+len(res.Removed) == 0 {
+			fmt.Println("No changes inside this workspace's paths.")
+		}
+		for _, p := range res.Updated {
+			fmt.Printf("- updated `%s`\n", p)
+		}
+		for _, p := range res.Removed {
+			fmt.Printf("- removed `%s`\n", p)
+		}
+		return nil
+	}
+	fmt.Printf("%s -> %s\n", res.From.String()[:12], res.To.String()[:12])
+	for _, p := range res.Updated {
+		fmt.Printf("U\t%s\n", p)
+	}
+	for _, p := range res.Removed {
+		fmt.Printf("D\t%s\n", p)
 	}
 	return nil
 }
