@@ -4,6 +4,7 @@
 package main
 
 import (
+	_ "embed"
 	"os"
 
 	"github.com/baz-scm/gion/internal/cli"
@@ -16,7 +17,13 @@ var (
 	commit  = ""
 )
 
+// guide is the agent skill, also printed by `gion help --md`.
+//
+//go:embed skills/gion/SKILL.md
+var guide string
+
 func main() {
 	cli.SetVersion(version, commit)
+	cli.SetGuide(guide)
 	os.Exit(cli.Main("gion", os.Args[1:]))
 }

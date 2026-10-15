@@ -69,6 +69,7 @@ commands:
 <rev> is a branch, tag, HEAD or commit id, with optional ~N / ^N steps
 (main~2). Short commit ids work on GitHub.
 flags: --md  markdown output for agents
+` + "`%[1]s help --md`" + ` prints a usage guide for agents.
 `
 
 // prog is the command name used in help and error text.
@@ -108,6 +109,12 @@ func Main(invokedAs string, args []string) int {
 		name = "version"
 	}
 	if name == "-h" || name == "--help" || name == "help" {
+		for _, a := range args[1:] {
+			if a == "--md" || a == "-md" {
+				fmt.Print(agentGuide())
+				return 0
+			}
+		}
 		fmt.Print(usage)
 		return 0
 	}

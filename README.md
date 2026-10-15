@@ -55,6 +55,16 @@ gion keeps a cache in `~/.gion` (see [How it works](#how-it-works)). It includes
 
 Credentials are borrowed, never stored. gion tries, in order: the `GITHUB_TOKEN` environment variable (for github.com only; in GitHub Actions use the built-in `secrets.GITHUB_TOKEN`), then `gh auth token`, then your `git credential` helper.
 
+## For agents
+
+gion ships an [agent skill](skills/gion/SKILL.md) that teaches coding agents to read, search and push without cloning. Install it with the [skills](https://skills.sh) CLI:
+
+```sh
+npx skills add baz-scm/gion
+```
+
+Agents without the skill can run `gion help --md`, which prints the same guide.
+
 ## Commands
 
 `<remote>` is a URL or a GitHub `owner/repo`. A `<rev>` is a branch, tag, `HEAD` or commit id, optionally with `~N`/`^N` parent steps (`main~2`). Short commit ids work on GitHub (expanded through its API; the git protocol only takes full ids). Run `gion help` for the full usage text.
