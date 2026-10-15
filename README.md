@@ -4,6 +4,7 @@ A small asymmetric git client for always-online agents and CI. It keeps only wha
 
 ```sh
 gion cat chromium/chromium HEAD:base/strings/string_util.h   # one file from a 66 GB repo, no clone
+gion grep chromium/chromium 'TrimWhitespaceASCII\('             # search all 509k files, exact lines
 gion clone baz-scm/baz ./baz --path demos                     # sparse workspace, no history, no .git
 cd baz && $EDITOR demos/x.md && gion commit -m "edit" --md    # push from the workspace
 ```
@@ -40,6 +41,8 @@ Credentials are borrowed, never stored. gion tries, in order: the `GION_TOKEN` e
 | `ls-refs <remote> [--prefix p]` | List refs (protocol v2). The output matches `git ls-remote --symref`. |
 | `cat <remote> <rev>:<path>` | Print a file's raw bytes. |
 | `ls <remote> [<rev>[:<dir>]]` | List a directory. The output matches `git ls-tree`. |
+| `find <remote> [<rev>] <pattern>` | Search file paths across the whole repo. A substring, or a glob (`*`, `?`, `**`, `[...]`); case-insensitive unless the pattern has uppercase. |
+| `grep <remote> [<rev>] <regex> [--path p]...` | Search file contents and print `path:line:text`. See [Search](#search). |
 | `clone <remote> <dir> [--path p]...` | Create a workspace with only the chosen paths (default: everything) at one commit. It has no history and no `.git` directory. |
 | `status` | Inside a workspace: added, modified and deleted files. Untracked files matched by `.gitignore` are skipped. |
 | `sync` | Inside a workspace: bring files up to date with the branch. Files you've edited are kept; if upstream changed them too, nothing is written and the conflicting paths are listed. |
@@ -47,6 +50,17 @@ Credentials are borrowed, never stored. gion tries, in order: the `GION_TOKEN` e
 | `commit <remote> -m <msg> <path>=<file>... [--rm p]` | Commit without any workspace. `--to <branch>` updates an existing branch instead of creating one; `--orphan` makes a root commit (e.g. in an empty repo). |
 
 Add `--md` for Markdown output that agents can read.
+
+## Search
+
+`find` and `grep` work on a **path index**: every file path at a commit, built from the trees alone (no file contents). The first build for a repo fetches every tree once (for chromium: 45k trees, 510k paths, a 15 MB index); after that, moving to a newer commit fetches only the trees that changed. Searching a cached commit costs one ref lookup.
+
+`grep` then picks which files to read:
+
+- **Few enough files** (after `--path` filters, at most `--max-files`, default 5000): fetch them all (once; they stay cached) and scan locally.
+- **Too many**: ask GitHub code search which files contain the longest literal in your regex, fetch only those, and scan them with the real regex. Results are exact lines, but GitHub only indexes the default branch and skips some files (very large ones, for example), so gion prints a note saying where candidates came from. A pattern with no 3+ character literal (like a top-level `a|b`) can't use this; narrow it with `--path`.
+
+`--local` forces a full scan and `--forge` forces code search.
 
 ## How it works
 
@@ -63,7 +77,7 @@ Set `GION_TRACE=1` to log each request's protocol lines and timings to stderr.
 
 - **No merging.** `sync` and `commit` refuse when upstream changed the same files you edited; resolve by committing elsewhere or undoing the edit.
 - **Commits are unsigned.**
-- **Searching file contents across a whole repo isn't supported yet.** The plan: index all file paths from the trees (about 18 MB for chromium), scan contents for scoped searches, and use the forge's code search for whole-repo searches.
+- **Whole-repo `grep` on big repos depends on GitHub code search**, so it covers the default branch's index only, is rate-limited (about 10 searches a minute), and isn't available on other forges yet.
 - **Full-repo clones are slower than `git clone --depth 1`.** Fetching only the paths you need is the intended use.
 
 ## Development

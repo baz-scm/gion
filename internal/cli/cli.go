@@ -23,6 +23,12 @@ commands:
   ls-refs <remote> [--prefix p]...     list remote refs (protocol v2)
   cat     <remote> <rev>:<path>        print a file's raw bytes
   ls      <remote> [<rev>[:<dir>]]     list a directory (default HEAD:)
+  find    <remote> [<rev>] <pattern>  search file paths across the whole repo
+                                       (substring, or glob with * ? ** [])
+  grep    <remote> [<rev>] <regex> [--path p]... [-i] [-l] [--local|--forge]
+          search file contents: scans locally when the candidate files are
+          few (--max-files, default 5000), else asks GitHub code search for
+          candidates and verifies them locally
   clone   <remote> <dir> [--ref r] [--path p]...
           light workspace: only the chosen paths (default all) at one
           commit, no history, no .git. Then, inside it:
@@ -69,6 +75,8 @@ func Main(invokedAs string, args []string) int {
 		"status":  status,
 		"sync":    sync,
 		"version": versionCmd,
+		"find":    find,
+		"grep":    grep,
 	}
 	name := args[0]
 	if name == "-h" || name == "--help" || name == "help" {
