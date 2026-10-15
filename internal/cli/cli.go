@@ -89,6 +89,9 @@ func Main(invokedAs string, args []string) int {
 		"gc":      gc,
 	}
 	name := args[0]
+	if name == "-v" || name == "-version" || name == "--version" {
+		name = "version"
+	}
 	if name == "-h" || name == "--help" || name == "help" {
 		fmt.Print(usage)
 		return 0
