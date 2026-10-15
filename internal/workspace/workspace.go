@@ -344,7 +344,7 @@ func (w *Workspace) Commit(ctx context.Context, r *repo.Repo, msg, branch string
 	if len(changes) == 0 {
 		return CommitResult{}, errors.New("nothing to commit")
 	}
-	author, err := repo.Identity()
+	who, err := repo.Identity()
 	if err != nil {
 		return CommitResult{}, err
 	}
@@ -353,7 +353,7 @@ func (w *Workspace) Commit(ctx context.Context, r *repo.Repo, msg, branch string
 		rc[i] = repo.Change{Path: c.Path, Data: c.Data, Delete: c.Kind == Deleted, Mode: c.Mode}
 	}
 	base, _ := plumbing.FromHex(w.State.Base)
-	opts := repo.CommitOptions{Changes: rc, Message: msg, Author: author}
+	opts := repo.CommitOptions{Changes: rc, Message: msg, Who: who}
 	switch {
 	case w.State.Branch != "" && branch != "" && branch != w.State.Branch:
 		return CommitResult{}, fmt.Errorf("workspace already pushes to %s", w.State.Branch)

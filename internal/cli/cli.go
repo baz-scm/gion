@@ -30,7 +30,7 @@ commands:
   commit  -m <msg> [--branch b]        push workspace changes; first commit
                                        creates a branch, later ones update it
   commit  <remote> -m <msg> <path>=<local>... [--rm <path>]...
-          [--branch <name> [--onto <rev>] | --to <branch>]
+          [--branch <name> [--onto <rev> | --orphan] | --to <branch>]
           build a commit from the changes and push it; no checkout needed.
           default: new branch gion/<timestamp> from HEAD.
           --to: update an existing branch (compare-and-swap, retries on
@@ -252,6 +252,7 @@ func commit(ctx context.Context, args []string) error {
 	onto := fs.String("onto", "HEAD", "base rev for a new branch")
 	branch := fs.String("branch", "", "new branch to create (default gion/<timestamp>)")
 	to := fs.String("to", "", "existing branch to update with compare-and-swap")
+	orphan := fs.Bool("orphan", false, "make a root commit with no parent (e.g. in an empty repo)")
 	md := fs.Bool("md", false, "markdown output")
 	var rms multiFlag
 	fs.Var(&rms, "rm", "path to delete (repeatable)")
@@ -263,13 +264,16 @@ func commit(ctx context.Context, args []string) error {
 		return fmt.Errorf("usage: %s commit [<remote>] -m <msg> [<path>=<local>...] [--rm <path>]...", prog)
 	}
 	if len(pos) == 0 {
-		if *to != "" || len(rms) > 0 || *onto != "HEAD" {
-			return errors.New("--to, --rm and --onto are for remote mode; in a workspace just edit files")
+		if *to != "" || len(rms) > 0 || *onto != "HEAD" || *orphan {
+			return errors.New("--to, --rm, --onto and --orphan are for remote mode; in a workspace just edit files")
 		}
 		return workspaceCommit(ctx, *msg, *branch, *md)
 	}
 	if *to != "" && *branch != "" {
 		return errors.New("--to and --branch are exclusive")
+	}
+	if *orphan && (*to != "" || *onto != "HEAD") {
+		return errors.New("--orphan creates a new branch; it can't be combined with --to or --onto")
 	}
 	if *to == "" && *branch == "" {
 		*branch = "gion/" + time.Now().UTC().Format("20060102-150405")
@@ -291,7 +295,7 @@ func commit(ctx context.Context, args []string) error {
 		changes = append(changes, repo.Change{Path: p, Delete: true})
 	}
 
-	author, err := repo.Identity()
+	who, err := repo.Identity()
 	if err != nil {
 		return err
 	}
@@ -303,8 +307,8 @@ func commit(ctx context.Context, args []string) error {
 
 	start := time.Now()
 	res, err := r.CommitAndPush(ctx, repo.CommitOptions{
-		Changes: changes, Message: *msg, Author: author,
-		Onto: *onto, Branch: *branch, To: *to,
+		Changes: changes, Message: *msg, Who: who,
+		Onto: *onto, Branch: *branch, To: *to, Orphan: *orphan,
 	})
 	if err != nil {
 		return err

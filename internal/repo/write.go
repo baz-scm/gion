@@ -196,23 +196,71 @@ func sortEntries(es []object.TreeEntry) {
 	sort.Slice(es, func(i, j int) bool { return key(es[i]) < key(es[j]) })
 }
 
-// Identity is the commit author: GIT_AUTHOR_NAME/EMAIL, else ~/.gitconfig.
-func Identity() (object.Signature, error) {
-	sig := object.Signature{Name: os.Getenv("GIT_AUTHOR_NAME"), Email: os.Getenv("GIT_AUTHOR_EMAIL"), When: time.Now()}
-	if sig.Name == "" || sig.Email == "" {
-		if cfg, err := config.LoadConfig(config.GlobalScope); err == nil {
-			if sig.Name == "" {
-				sig.Name = cfg.User.Name
+// People is who a commit is by.
+type People struct {
+	Author, Committer object.Signature
+}
+
+// Identity reads git's standard variables: GIT_AUTHOR_{NAME,EMAIL,DATE} and
+// GIT_COMMITTER_{NAME,EMAIL,DATE}, falling back to user.name/user.email in
+// ~/.gitconfig and the current time. The committer defaults to the author's
+// name and email.
+func Identity() (People, error) {
+	var cfgName, cfgEmail string
+	if cfg, err := config.LoadConfig(config.GlobalScope); err == nil {
+		cfgName, cfgEmail = cfg.User.Name, cfg.User.Email
+	}
+	sig := func(role, defName, defEmail string) (object.Signature, error) {
+		s := object.Signature{Name: os.Getenv("GIT_" + role + "_NAME"), Email: os.Getenv("GIT_" + role + "_EMAIL"), When: time.Now()}
+		if s.Name == "" {
+			s.Name = defName
+		}
+		if s.Email == "" {
+			s.Email = defEmail
+		}
+		if d := os.Getenv("GIT_" + role + "_DATE"); d != "" {
+			t, err := parseGitDate(d)
+			if err != nil {
+				return s, fmt.Errorf("GIT_%s_DATE: %w", role, err)
 			}
-			if sig.Email == "" {
-				sig.Email = cfg.User.Email
+			s.When = t
+		}
+		return s, nil
+	}
+	a, err := sig("AUTHOR", cfgName, cfgEmail)
+	if err != nil {
+		return People{}, err
+	}
+	if a.Name == "" || a.Email == "" {
+		return People{}, errors.New("no author: set GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL, or user.name/user.email in ~/.gitconfig")
+	}
+	c, err := sig("COMMITTER", a.Name, a.Email)
+	if err != nil {
+		return People{}, err
+	}
+	return People{Author: a, Committer: c}, nil
+}
+
+// parseGitDate accepts ISO 8601 / RFC 3339 (git's %aI) and "@<unix> [+hhmm]"
+// (git's internal raw format).
+func parseGitDate(s string) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
+	if rest, ok := strings.CutPrefix(s, "@"); ok {
+		secs, tz, _ := strings.Cut(rest, " ")
+		var unix int64
+		if _, err := fmt.Sscanf(secs, "%d", &unix); err == nil {
+			t := time.Unix(unix, 0)
+			if tz != "" {
+				if z, err := time.Parse("-0700", tz); err == nil {
+					t = t.In(z.Location())
+				}
 			}
+			return t, nil
 		}
 	}
-	if sig.Name == "" || sig.Email == "" {
-		return sig, errors.New("no author: set GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL, or user.name/user.email in ~/.gitconfig")
-	}
-	return sig, nil
+	return time.Time{}, fmt.Errorf("unsupported date %q: use RFC 3339 or @<unix> [+hhmm]", s)
 }
 
 // built is a commit ready to push.
@@ -221,10 +269,14 @@ type built struct {
 	objs   []plumbing.EncodedObject
 }
 
-func (r *Repo) build(ctx context.Context, parent plumbing.Hash, changes []Change, msg string, author object.Signature) (built, error) {
-	pc, err := r.Commit(ctx, parent)
-	if err != nil {
-		return built{}, err
+// build makes a commit on parent; a zero parent makes a root commit.
+func (r *Repo) build(ctx context.Context, parent plumbing.Hash, changes []Change, msg string, who People) (built, error) {
+	pc := &object.Commit{}
+	if !parent.IsZero() {
+		var err error
+		if pc, err = r.Commit(ctx, parent); err != nil {
+			return built{}, err
+		}
 	}
 	byPath := map[string]*Change{}
 	for i := range changes {
@@ -240,16 +292,18 @@ func (r *Repo) build(ctx context.Context, parent plumbing.Hash, changes []Change
 			return built{}, err
 		}
 	}
-	if root == pc.TreeHash {
+	if !parent.IsZero() && root == pc.TreeHash {
 		return built{}, errors.New("nothing to commit: changes match the base")
 	}
 
 	c := &object.Commit{
-		Author:       author,
-		Committer:    author,
-		Message:      msg,
-		TreeHash:     root,
-		ParentHashes: []plumbing.Hash{parent},
+		Author:    who.Author,
+		Committer: who.Committer,
+		Message:   msg,
+		TreeHash:  root,
+	}
+	if !parent.IsZero() {
+		c.ParentHashes = []plumbing.Hash{parent}
 	}
 	o := r.Cache.New()
 	if err := c.Encode(o); err != nil {
@@ -283,11 +337,14 @@ func pack(objs []plumbing.EncodedObject) ([]byte, error) {
 type CommitOptions struct {
 	Changes []Change
 	Message string
-	Author  object.Signature
+	Who     People
 	// Onto is the base rev for a new branch. Ignored when To is set.
 	Onto string
 	// Branch creates a new branch; fails if it exists.
 	Branch string
+	// Orphan makes Branch a root commit with no parent (e.g. the first
+	// commit in an empty repository). Onto is ignored.
+	Orphan bool
 	// To updates an existing branch with compare-and-swap, rebasing onto
 	// upstream moves that don't touch our paths.
 	To string
@@ -328,11 +385,14 @@ func (r *Repo) CommitAndPush(ctx context.Context, o CommitOptions) (CommitResult
 
 	if o.To == "" {
 		ref := plumbing.NewBranchReferenceName(o.Branch)
-		base, err := r.Resolve(ctx, o.Onto)
-		if err != nil {
-			return CommitResult{}, err
+		var base plumbing.Hash
+		if !o.Orphan {
+			var err error
+			if base, err = r.Resolve(ctx, o.Onto); err != nil {
+				return CommitResult{}, err
+			}
 		}
-		b, err := r.build(ctx, base, o.Changes, o.Message, o.Author)
+		b, err := r.build(ctx, base, o.Changes, o.Message, o.Who)
 		if err != nil {
 			return CommitResult{}, err
 		}
@@ -361,7 +421,7 @@ func (r *Repo) CommitAndPush(ctx context.Context, o CommitOptions) (CommitResult
 				return CommitResult{}, err
 			}
 		}
-		b, err := r.build(ctx, tip, o.Changes, o.Message, o.Author)
+		b, err := r.build(ctx, tip, o.Changes, o.Message, o.Who)
 		if err != nil {
 			return CommitResult{}, err
 		}
