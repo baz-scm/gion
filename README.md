@@ -8,7 +8,6 @@ Read, search and push to any git repo without cloning it.
 [![CI](https://github.com/baz-scm/gion/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/baz-scm/gion/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/baz-scm/gion?include_prereleases&sort=semver)](https://github.com/baz-scm/gion/releases)
 [![Go Reference](https://pkg.go.dev/badge/github.com/baz-scm/gion.svg)](https://pkg.go.dev/github.com/baz-scm/gion)
-[![Go Report Card](https://goreportcard.com/badge/github.com/baz-scm/gion)](https://goreportcard.com/report/github.com/baz-scm/gion)
 [![License](https://img.shields.io/github/license/baz-scm/gion)](LICENSE)
 ![Status: beta](https://img.shields.io/badge/status-beta-orange)
 
