@@ -1,8 +1,22 @@
+<div align="center">
+
 # gion
 
-*gion* (**GI-un**, "gi" as in **gi**t) = **g**it + sc**ion**, after the Scion design described [below](#why).
+**A small asymmetric git client for agents and CI.**<br>
+Read, search and push to any git repo without cloning it.
 
-A small asymmetric git client for always-online agents and CI. It keeps only what a task needs and pulls files, trees and commits from the remote on demand. It speaks the standard git wire protocol, so it works against GitHub and other git servers as they are today.
+[![CI](https://github.com/baz-scm/gion/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/baz-scm/gion/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/baz-scm/gion?include_prereleases&sort=semver)](https://github.com/baz-scm/gion/releases)
+[![Go Reference](https://pkg.go.dev/badge/github.com/baz-scm/gion.svg)](https://pkg.go.dev/github.com/baz-scm/gion)
+[![Go Report Card](https://goreportcard.com/badge/github.com/baz-scm/gion)](https://goreportcard.com/report/github.com/baz-scm/gion)
+[![License](https://img.shields.io/github/license/baz-scm/gion)](LICENSE)
+![Status: beta](https://img.shields.io/badge/status-beta-orange)
+
+<sub>*gion* (**GI-un**, "gi" as in **gi**t) = **g**it + sc**ion**, after the Scion design described [below](#why).</sub>
+
+</div>
+
+gion keeps only what a task needs and pulls files, trees and commits from the remote on demand. It speaks the standard git wire protocol, so it works against GitHub and other git servers as they are today.
 
 ```sh
 gion cat chromium/chromium HEAD:base/strings/string_util.h   # one file from a 66 GB repo, no clone
