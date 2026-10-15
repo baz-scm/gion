@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v6/plumbing/filemode"
+
 	"github.com/baz-scm/gion/internal/repo"
 	"github.com/baz-scm/gion/internal/wire"
 	"github.com/baz-scm/gion/internal/workspace"
@@ -41,6 +43,7 @@ commands:
   commit  <remote> -m <msg> <path>=<local>... [--rm <path>]...
           [--branch <name> [--onto <rev> | --orphan] | --to <branch>]
           build a commit from the changes and push it; no checkout needed.
+          each file's executable bit comes from the local file.
           default: new branch gion/<timestamp> from HEAD.
           --to: update an existing branch (compare-and-swap, retries on
           upstream moves that don't touch your paths).
@@ -307,7 +310,16 @@ func commit(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		changes = append(changes, repo.Change{Path: dst, Data: data})
+		fi, err := os.Stat(src)
+		if err != nil {
+			return err
+		}
+		// Like `git add`: the local file's executable bit decides the mode.
+		mode := filemode.Regular
+		if fi.Mode().Perm()&0o111 != 0 {
+			mode = filemode.Executable
+		}
+		changes = append(changes, repo.Change{Path: dst, Data: data, Mode: mode})
 	}
 	for _, p := range rms {
 		changes = append(changes, repo.Change{Path: p, Delete: true})
