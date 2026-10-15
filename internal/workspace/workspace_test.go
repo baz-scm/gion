@@ -75,7 +75,7 @@ func TestCloneEditCommit(t *testing.T) {
 		}
 	}
 
-	c1, err := w.Commit(ctx, r, "first", "ws-branch")
+	c1, err := w.Commit(ctx, r, "first", "ws-branch", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestCloneEditCommit(t *testing.T) {
 
 	// Second commit updates the same branch with CAS.
 	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a3\n"), 0o644)
-	c2, err := w.Commit(ctx, r, "second", "")
+	c2, err := w.Commit(ctx, r, "second", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +312,7 @@ func TestCommitPullsUpstreamOnOtherPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, dir, "a.txt", "first\n")
-	if _, err := w.Commit(ctx, r, "first", "ws"); err != nil {
+	if _, err := w.Commit(ctx, r, "first", "ws", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -320,7 +320,7 @@ func TestCommitPullsUpstreamOnOtherPaths(t *testing.T) {
 	pushUpstream(t, clone, "ws", map[string]string{"b.txt": "theirs\n"})
 
 	write(t, dir, "a.txt", "second\n")
-	res, err := w.Commit(ctx, r, "second", "")
+	res, err := w.Commit(ctx, r, "second", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,5 +335,87 @@ func TestCommitPullsUpstreamOnOtherPaths(t *testing.T) {
 	}
 	if w.State.Base != res.Commit.String() {
 		t.Error("base is not the pushed commit")
+	}
+}
+
+func TestSwitchAndCommitToExistingBranch(t *testing.T) {
+	t.Setenv("GIT_AUTHOR_NAME", "gion")
+	t.Setenv("GIT_AUTHOR_EMAIL", "gion@test")
+	remote, clone := testgit.Serve(t)
+	r := openRepo(t, remote)
+	ctx := context.Background()
+
+	// A feature branch that differs from main.
+	testgit.Run(t, clone, "checkout", "-q", "-b", "feature")
+	write(t, clone, "b.txt", "feature b\n")
+	write(t, clone, "f/only.txt", "only on feature\n")
+	testgit.Run(t, clone, "add", "-A")
+	testgit.Run(t, clone, "commit", "-qm", "feature work")
+	testgit.Run(t, clone, "push", "-q", "origin", "feature")
+
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(ctx, r, dir, "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, "a.txt", "on feature\n") // local edit survives the switch
+
+	if _, err := w.Switch(ctx, r, "feature"); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, dir, "b.txt") != "feature b\n" || read(t, dir, "f/only.txt") != "only on feature\n" {
+		t.Error("feature files not on disk after switch")
+	}
+	if read(t, dir, "a.txt") != "on feature\n" {
+		t.Error("local edit lost on switch")
+	}
+	if cs, _ := w.Status(); len(cs) != 1 || cs[0].Path != "a.txt" {
+		t.Errorf("status after switch = %v", kinds(cs))
+	}
+
+	// Commit now goes onto feature, on top of its tip.
+	featureTip := testgit.Run(t, clone, "rev-parse", "feature")
+	res, err := w.Commit(ctx, r, "on feature", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Created || res.Ref.Short() != "feature" || res.Parent.String() != featureTip {
+		t.Fatalf("commit: created=%v ref=%s parent=%s want parent %s", res.Created, res.Ref, res.Parent, featureTip)
+	}
+
+	// --to onto a branch where our file differs from our base: refused,
+	// since overwriting main's a.txt may not be what was meant.
+	write(t, dir, "a.txt", "to main\n")
+	if _, err := w.Commit(ctx, r, "to main", "", "main"); err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Fatalf("--to main touching a.txt: err = %v, want conflict", err)
+	}
+	write(t, dir, "a.txt", "on feature\n") // back to what we committed
+
+	// --to onto main with a file that's the same on both branches works,
+	// and the workspace then mirrors main.
+	write(t, dir, "d/e.txt", "e via --to\n")
+	res, err = w.Commit(ctx, r, "to main", "", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ref.Short() != "main" || w.State.Branch != "main" {
+		t.Fatalf("--to main: ref=%s state=%s", res.Ref, w.State.Branch)
+	}
+	testgit.Run(t, clone, "fetch", "-q", "origin")
+	if got := testgit.Run(t, clone, "show", "origin/main:d/e.txt"); got != "e via --to" {
+		t.Errorf("main d/e.txt = %q", got)
+	}
+	if read(t, dir, "b.txt") != "b\n" || read(t, dir, "a.txt") != "a\n" {
+		t.Error("workspace doesn't mirror main after --to")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "f", "only.txt")); !os.IsNotExist(err) {
+		t.Error("feature-only file still on disk after moving to main")
+	}
+	if cs, _ := w.Status(); len(cs) != 0 {
+		t.Errorf("status after --to = %v, want clean", kinds(cs))
+	}
+
+	if _, err := w.Switch(ctx, r, "nope"); err == nil || !strings.Contains(err.Error(), "doesn't exist") {
+		t.Errorf("switch to missing branch: %v", err)
 	}
 }

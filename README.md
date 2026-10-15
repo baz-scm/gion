@@ -54,12 +54,31 @@ Credentials are borrowed, never stored. gion tries, in order: the `GION_TOKEN` e
 | `clone <remote> <dir> [--path p]...` | Create a workspace with only the chosen paths (default: everything) at one commit. It has no history and no `.git` directory. |
 | `status` | Inside a workspace: added, modified and deleted files. Untracked files matched by `.gitignore` are skipped. |
 | `sync` | Inside a workspace: bring files up to date with the branch. Files you've edited are kept; if upstream changed them too, nothing is written and the conflicting paths are listed. |
-| `commit -m <msg> [--branch b]` | Inside a workspace: push your changes. The first commit creates a branch (`gion/<timestamp>` by default); later commits update it. If someone else pushed to the branch on other files, their changes are written to disk too. |
+| `switch <branch>` | Inside a workspace: move to an existing branch. Only files that differ are rewritten; your edits are kept (nothing changes if they conflict). Later commits go to that branch. |
+| `commit -m <msg> [--branch b \| --to b]` | Inside a workspace: push your changes. By default the first commit creates a branch (`gion/<timestamp>`, or `--branch b`) and later commits update it. `--to b` pushes onto an existing branch instead. If someone else pushed to the branch on other files, their changes are written to disk too. |
 | `gc [--max SIZE]` | Trim the cache in `~/.gion` to its size cap now and print its size. |
 | `tag <remote> <name> [<rev>] [-m msg]` | Create a tag on the remote, annotated if `-m` is given. Refuses to move an existing tag. |
 | `commit <remote> -m <msg> <path>=<file>... [--rm p]` | Commit without any workspace. `--to <branch>` updates an existing branch instead of creating one; `--orphan` makes a root commit (e.g. in an empty repo). |
 
 Add `--md` for Markdown output that agents can read.
+
+## Branches
+
+Every read command takes a branch, tag, full ref or full commit id as `<rev>`, and branches share everything they have in common in the cache, so reading a second branch only fetches what differs.
+
+A workspace has one base and one branch it pushes to:
+
+```sh
+gion clone baz-scm/baz ./baz --path demos            # base: the default branch
+cd baz
+gion switch feature/x                                # move to an existing branch
+$EDITOR demos/app.md
+gion commit -m "update app"                          # pushes onto feature/x
+gion commit -m "hotfix" --to main                    # or onto another existing branch
+gion commit -m "try" --branch my-idea                # or create a new one
+```
+
+Pushing onto a branch is compare-and-swap: if the branch moved and the other commits changed different files, gion builds on the new tip and writes those files to disk; if they changed a file you edited, it refuses instead of overwriting.
 
 ## Search
 

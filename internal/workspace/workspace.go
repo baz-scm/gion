@@ -414,7 +414,13 @@ type CommitResult struct {
 // branch (gion/<timestamp> if empty); later ones update it with CAS. If the
 // branch had moved on other paths, those upstream changes are written to disk
 // too, so the workspace matches the new commit.
-func (w *Workspace) Commit(ctx context.Context, r *repo.Repo, msg, branch string) (CommitResult, error) {
+//
+// to pushes onto an existing branch instead (compare-and-swap, accepting
+// upstream moves only on other paths), and makes it the workspace's branch.
+func (w *Workspace) Commit(ctx context.Context, r *repo.Repo, msg, branch, to string) (CommitResult, error) {
+	if branch != "" && to != "" {
+		return CommitResult{}, errors.New("--branch creates a new branch and --to updates an existing one; pick one")
+	}
 	changes, err := w.Status()
 	if err != nil {
 		return CommitResult{}, err
@@ -433,8 +439,10 @@ func (w *Workspace) Commit(ctx context.Context, r *repo.Repo, msg, branch string
 	base, _ := plumbing.FromHex(w.State.Base)
 	opts := repo.CommitOptions{Changes: rc, Message: msg, Who: who}
 	switch {
+	case to != "":
+		opts.To, opts.Base = strings.TrimPrefix(to, "refs/heads/"), base
 	case w.State.Branch != "" && branch != "" && branch != w.State.Branch:
-		return CommitResult{}, fmt.Errorf("workspace already pushes to %s", w.State.Branch)
+		return CommitResult{}, fmt.Errorf("workspace already pushes to %s; use --to to push elsewhere", w.State.Branch)
 	case w.State.Branch != "":
 		opts.To, opts.Base = w.State.Branch, base
 	default:
@@ -599,4 +607,31 @@ func (w *Workspace) pruneEmptyDirs(p string) {
 			return
 		}
 	}
+}
+
+// Switch moves the workspace to an existing branch: files that differ
+// between the current base and the branch tip are rewritten, local edits are
+// kept (nothing changes if they conflict), and later commits go to branch.
+func (w *Workspace) Switch(ctx context.Context, r *repo.Repo, branch string) (SyncResult, error) {
+	branch = strings.TrimPrefix(branch, "refs/heads/")
+	tip, err := r.Resolve(ctx, "refs/heads/"+branch)
+	if errors.Is(err, repo.ErrNotExist) {
+		return SyncResult{}, fmt.Errorf("branch %s doesn't exist; to create it, commit with --branch %s", branch, branch)
+	}
+	if err != nil {
+		return SyncResult{}, err
+	}
+	base, _ := plumbing.FromHex(w.State.Base)
+	res := SyncResult{From: base, To: tip}
+	if tip != base {
+		local, err := w.Status()
+		if err != nil {
+			return res, err
+		}
+		if res, err = w.applyUpstream(ctx, r, base, tip, local); err != nil {
+			return res, err
+		}
+	}
+	w.State.Ref, w.State.Branch, w.State.Base = branch, branch, tip.String()
+	return res, w.save()
 }

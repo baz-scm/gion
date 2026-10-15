@@ -39,8 +39,12 @@ commands:
                                        (honors .gitignore)
   sync                                 pull upstream changes into files you
                                        haven't edited; stops on conflicts
-  commit  -m <msg> [--branch b]        push workspace changes; first commit
-                                       creates a branch, later ones update it
+  switch  <branch>                     move the workspace to an existing branch;
+                                       keeps your edits, commits go there
+  commit  -m <msg> [--branch b | --to b]
+                                       push workspace changes. default: first
+                                       commit creates a branch, later ones
+                                       update it. --to b pushes onto existing b
   commit  <remote> -m <msg> <path>=<local>... [--rm <path>]...
           [--branch <name> [--onto <rev> | --orphan] | --to <branch>]
           build a commit from the changes and push it; no checkout needed.
@@ -87,6 +91,7 @@ func Main(invokedAs string, args []string) int {
 		"grep":    grep,
 		"tag":     tag,
 		"gc":      gc,
+		"switch":  switchCmd,
 	}
 	name := args[0]
 	if name == "-v" || name == "-version" || name == "--version" {
@@ -296,10 +301,10 @@ func commit(ctx context.Context, args []string) error {
 		return fmt.Errorf("usage: %s commit [<remote>] -m <msg> [<path>=<local>...] [--rm <path>]...", prog)
 	}
 	if len(pos) == 0 {
-		if *to != "" || len(rms) > 0 || *onto != "HEAD" || *orphan {
-			return errors.New("--to, --rm, --onto and --orphan are for remote mode; in a workspace just edit files")
+		if len(rms) > 0 || *onto != "HEAD" || *orphan {
+			return errors.New("--rm, --onto and --orphan are for remote mode; in a workspace just edit files")
 		}
-		return workspaceCommit(ctx, *msg, *branch, *md)
+		return workspaceCommit(ctx, *msg, *branch, *to, *md)
 	}
 	if *to != "" && *branch != "" {
 		return errors.New("--to and --branch are exclusive")
@@ -465,7 +470,7 @@ func status(ctx context.Context, args []string) error {
 	return nil
 }
 
-func workspaceCommit(ctx context.Context, msg, branch string, md bool) error {
+func workspaceCommit(ctx context.Context, msg, branch, to string, md bool) error {
 	w, err := workspace.Find(".")
 	if err != nil {
 		return err
@@ -477,7 +482,7 @@ func workspaceCommit(ctx context.Context, msg, branch string, md bool) error {
 	defer r.Close()
 
 	start := time.Now()
-	res, err := w.Commit(ctx, r, msg, branch)
+	res, err := w.Commit(ctx, r, msg, branch, to)
 	if err != nil {
 		return err
 	}
@@ -570,4 +575,39 @@ func humanBytes(n int64) string {
 		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
 	}
 	return fmt.Sprintf("%d B", n)
+}
+
+func switchCmd(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("switch", flag.ContinueOnError)
+	md := fs.Bool("md", false, "markdown output")
+	pos, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return fmt.Errorf("usage: %s switch <branch>", prog)
+	}
+	w, err := workspace.Find(".")
+	if err != nil {
+		return err
+	}
+	r, err := repo.Open(w.State.Remote)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	res, err := w.Switch(ctx, r, pos[0])
+	if err != nil {
+		if errors.Is(err, workspace.ErrLocalConflict) {
+			return fmt.Errorf("%w\nnothing was changed; commit or undo those edits first", err)
+		}
+		return err
+	}
+	n := len(res.Updated) + len(res.Removed)
+	if *md {
+		fmt.Printf("## Switched to `%s` (`%s`)\n\n- %d file(s) updated, %d removed; your edits were kept.\n- `%s commit` now pushes to `%s`.\n", pos[0], res.To.String()[:12], len(res.Updated), len(res.Removed), prog, pos[0])
+		return nil
+	}
+	fmt.Printf("switched to %s @ %s (%d files changed)\n", pos[0], res.To.String()[:12], n)
+	return nil
 }
