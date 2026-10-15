@@ -1,5 +1,7 @@
 # gion
 
+*gion* (hard g, rhymes with "scion": **GUY-un**) = **g**it + sc**ion**, after the Scion design described [below](#why).
+
 A small asymmetric git client for always-online agents and CI. It keeps only what a task needs and pulls files, trees and commits from the remote on demand. It speaks the standard git wire protocol, so it works against GitHub and other git servers as they are today.
 
 ```sh
