@@ -15,7 +15,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X main.version={{ .Version }} -X main.commit={{ .FullCommit }}
+      - -s -w -X main.version={{ .Tag }} -X main.commit={{ .FullCommit }}
 
 archives:
   - formats: [tar.gz]

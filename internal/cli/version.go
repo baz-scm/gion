@@ -40,9 +40,13 @@ func versionCmd(_ context.Context, _ []string) error {
 	if len(c) > 12 {
 		c = c[:12]
 	}
+	platform := runtime.GOOS + "/" + runtime.GOARCH
 	if c == "" {
-		c = "unknown"
+		// `go install …@vX` builds from the module proxy, which records no
+		// commit; the version alone identifies it.
+		fmt.Printf("gion %s (%s)\n", Version(), platform)
+		return nil
 	}
-	fmt.Printf("gion %s (%s, %s/%s)\n", Version(), c, runtime.GOOS, runtime.GOARCH)
+	fmt.Printf("gion %s (%s, %s)\n", Version(), c, platform)
 	return nil
 }
