@@ -30,6 +30,8 @@ go install github.com/baz-scm/gion@latest
 
 Or download a prebuilt binary for Linux or macOS from [Releases](https://github.com/baz-scm/gion/releases). Run `gion version` to see what you have.
 
+gion keeps a cache in `~/.gion` (see [How it works](#how-it-works)). It includes a `CACHEDIR.TAG`, so backup tools such as restic and borg skip it; on macOS, exclude it from Time Machine with `tmutil addexclusion ~/.gion`.
+
 Credentials are borrowed, never stored. gion tries, in order: the `GION_TOKEN` environment variable, then `gh auth token`, then your `git credential` helper.
 
 ## Commands
@@ -47,6 +49,7 @@ Credentials are borrowed, never stored. gion tries, in order: the `GION_TOKEN` e
 | `status` | Inside a workspace: added, modified and deleted files. Untracked files matched by `.gitignore` are skipped. |
 | `sync` | Inside a workspace: bring files up to date with the branch. Files you've edited are kept; if upstream changed them too, nothing is written and the conflicting paths are listed. |
 | `commit -m <msg> [--branch b]` | Inside a workspace: push your changes. The first commit creates a branch (`gion/<timestamp>` by default); later commits update it. If someone else pushed to the branch on other files, their changes are written to disk too. |
+| `gc [--max SIZE]` | Trim the cache in `~/.gion` to its size cap now and print its size. |
 | `tag <remote> <name> [<rev>] [-m msg]` | Create a tag on the remote, annotated if `-m` is given. Refuses to move an existing tag. |
 | `commit <remote> -m <msg> <path>=<file>... [--rm p]` | Commit without any workspace. `--to <branch>` updates an existing branch instead of creating one; `--orphan` makes a root commit (e.g. in an empty repo). |
 
@@ -87,7 +90,7 @@ Reproduce with [`bench/bench.sh`](bench/bench.sh) (`bench/bench.sh 5` for 5 runs
 
 - **Reads fetch only what they need.** A ref is resolved on the server, then exactly the commit, the trees along the path, and the blob are fetched by object id. Each fetch uses protocol v2 with filter `tree:0` and depth 1, so nothing else comes along.
 - **Refs are never cached.** Each operation resolves a ref once and then uses that commit id. Everything after that is immutable, so it's safe to cache.
-- **One shared cache.** All invocations on a machine share a content-addressed cache in git's loose-object format (`$GION_CACHE`, or your user cache directory). Writes go to a temp file and are renamed into place, so concurrent processes need no locks.
+- **One shared cache.** All invocations on a machine share a content-addressed cache in `~/.gion` (objects in git's loose-object format, plus path indexes). Writes go to a temp file and are renamed into place, so concurrent processes need no locks. It's capped at 1 GB by default (`GION_CACHE_MAX=5GB`, or `0` for no limit): about once an hour gion trims it to 80% of the cap, least recently used first, never touching anything used in the last 10 minutes. `gion gc` trims it now and shows its size. Deleting `~/.gion` is always safe; it refills on demand. `GION_CACHE=/path/objects` moves it.
 - **Commits cost the size of the change, not the repo.** A commit is built from path changes: only the trees on the changed paths are fetched, and only the new objects are pushed.
 - **Commits are compare-and-swap.** `--to` and workspace commits update a branch only if it is still where we last saw it. If it moved and the other commit touched different paths, gion rebuilds on the new tip and retries. If it touched the same paths, gion stops with a conflict rather than overwrite.
 - **No git binary needed.** Everything goes through [go-git](https://github.com/go-git/go-git). The tests use the `git` CLI only to run a local test server.

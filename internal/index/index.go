@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/filemode"
@@ -68,6 +69,8 @@ func At(ctx context.Context, r *repo.Repo, commit plumbing.Hash) (*Index, string
 		prev = nil // unreadable index: rebuild
 	}
 	if prev != nil && prev.Commit == commit {
+		now := time.Now()
+		_ = os.Chtimes(path, now, now) // keep it from being evicted as unused
 		return prev, Hit, nil
 	}
 

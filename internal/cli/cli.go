@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-git/go-git/v6/plumbing/filemode"
 
+	"github.com/baz-scm/gion/internal/cache"
 	"github.com/baz-scm/gion/internal/repo"
 	"github.com/baz-scm/gion/internal/wire"
 	"github.com/baz-scm/gion/internal/workspace"
@@ -50,6 +51,8 @@ commands:
 
   tag     <remote> <name> [<rev>] [-m <msg>]
           create a tag on the remote (annotated with -m); never moves one
+  gc      [--max SIZE]                 trim the cache (~/.gion) now and show its
+                                       size; it's also trimmed automatically
   version                              print the gion version
 
 <remote> is a URL or GitHub "owner/repo".
@@ -83,6 +86,7 @@ func Main(invokedAs string, args []string) int {
 		"find":    find,
 		"grep":    grep,
 		"tag":     tag,
+		"gc":      gc,
 	}
 	name := args[0]
 	if name == "-h" || name == "--help" || name == "help" {
@@ -94,7 +98,11 @@ func Main(invokedAs string, args []string) int {
 		fmt.Fprintf(os.Stderr, "%s: unknown command %q\n\n%s", prog, name, usage)
 		return 2
 	}
-	if err := fn(ctx, args[1:]); err != nil {
+	err := fn(ctx, args[1:])
+	if name != "gc" && name != "version" {
+		cache.MaybeEvict() // at most hourly; keeps ~/.gion under GION_CACHE_MAX
+	}
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", prog, err)
 		return 1
 	}

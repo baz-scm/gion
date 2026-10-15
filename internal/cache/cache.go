@@ -3,7 +3,9 @@
 // need no locks: each write goes to a temp file and is renamed into place, and
 // two writers of the same id produce identical bytes.
 //
-// Layout is git's loose-object format: <dir>/<oid[:2]>/<oid[2:]>.
+// Layout is git's loose-object format: <dir>/<oid[:2]>/<oid[2:]>. The
+// default dir is ~/.gion/objects; path indexes live in ~/.gion/index. The
+// whole root is capped in size (see Evict).
 package cache
 
 import (
@@ -12,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/go-git/go-git/v6/plumbing"
 	format "github.com/go-git/go-git/v6/plumbing/format/config"
@@ -28,25 +31,48 @@ type Store struct {
 	mem *memory.Storage // object factory only; never holds data
 }
 
-// Dir returns the cache root: $GION_CACHE, else <user cache dir>/gion/objects.
+// Dir returns the object directory: $GION_CACHE, else ~/.gion/objects.
 func Dir() (string, error) {
 	if d := os.Getenv("GION_CACHE"); d != "" {
 		return d, nil
 	}
-	base, err := os.UserCacheDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "gion", "objects"), nil
+	return filepath.Join(home, ".gion", "objects"), nil
 }
+
+// Root is the directory holding objects/ and index/; it's what the size cap
+// covers.
+func Root() (string, error) {
+	d, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(d), nil
+}
+
+// cacheDirTag marks the root as a cache for backup tools (restic, borg, tar
+// --exclude-caches): https://bford.info/cachedir/
+const cacheDirTag = "Signature: 8a477f597d28d172789f06886806bc55\n# gion object cache; safe to delete, it refills on demand.\n"
 
 // Open opens (creating if needed) the cache at dir.
 func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(dir, "tmp"), 0o755); err != nil {
 		return nil, fmt.Errorf("cache: %w", err)
 	}
+	tag := filepath.Join(filepath.Dir(dir), "CACHEDIR.TAG")
+	if _, err := os.Stat(tag); errors.Is(err, os.ErrNotExist) {
+		_ = os.WriteFile(tag, []byte(cacheDirTag), 0o644)
+	}
 	return &Store{dir: dir, mem: memory.NewStorage()}, nil
 }
+
+// touchAfter is how stale an object's mtime may get before a read refreshes
+// it. Eviction is least-recently-used by mtime; an hour's precision is plenty
+// and saves a write on most reads.
+const touchAfter = time.Hour
 
 func (s *Store) path(h plumbing.Hash) string {
 	hex := h.String()
@@ -69,6 +95,10 @@ func (s *Store) Get(h plumbing.Hash) (plumbing.EncodedObject, error) {
 		return nil, err
 	}
 	defer f.Close()
+	if fi, err := f.Stat(); err == nil && time.Since(fi.ModTime()) > touchAfter {
+		now := time.Now()
+		_ = os.Chtimes(s.path(h), now, now)
+	}
 
 	r, err := objfile.NewReader(f, format.SHA1)
 	if err != nil {
