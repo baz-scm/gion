@@ -24,6 +24,9 @@ import (
 // ErrConflict means a path we changed was also changed upstream.
 var ErrConflict = errors.New("conflict")
 
+// errNothing means the changes leave the tree as it was.
+var errNothing = errors.New("nothing to commit: changes match the base")
+
 // Change sets or deletes one file.
 type Change struct {
 	Path   string
@@ -293,7 +296,7 @@ func (r *Repo) build(ctx context.Context, parent plumbing.Hash, changes []Change
 		}
 	}
 	if !parent.IsZero() && root == pc.TreeHash {
-		return built{}, errors.New("nothing to commit: changes match the base")
+		return built{}, errNothing
 	}
 
 	c := &object.Commit{

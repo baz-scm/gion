@@ -39,6 +39,11 @@ commands:
                                        (honors .gitignore)
   diff    [<path>...] [--name-only|--name-status]
                                        your edits as a unified diff
+  log     [<path>]  /  blame <path>    history of the workspace's commit
+  rebase  [<onto>]                     replay your branch onto <onto> (default:
+                                       the default branch) and push it. on a
+                                       conflict, fix the marked files, then
+                                       rebase --continue | --skip | --abort
   add     <path>...                    widen the workspace with more paths
                                        (a new path just joins the scope)
   sync                                 pull upstream changes into files you
@@ -60,6 +65,13 @@ commands:
   diff    <remote> [<rev>] [<rev>] [--path p]... [--name-only|--name-status] [-U n]
           what changed between two commits (a b or a..b), or what one commit
           changed (default HEAD). only the trees and files that differ are fetched
+  log     <remote> [<rev>] [-n N] [--path p] [--oneline]
+          commits newest first; --path: only those that changed it (GitHub
+          answers that fast; elsewhere history is walked locally)
+  blame   <remote> <rev>:<path> [-L a,b]
+          which commit last changed each line (GitHub GraphQL, or locally)
+  rebase  <remote> <branch> [--onto <rev>]
+          the same without a workspace; stops (pushing nothing) on conflicts
   tag     <remote> <name> [<rev>] [-m <msg>]
           create a tag on the remote (annotated with -m); never moves one
   gc      [--max SIZE]                 trim the cache (~/.gion) now and show its
@@ -108,6 +120,9 @@ func Main(invokedAs string, args []string) int {
 		"diff":    diff,
 		"add":     add,
 		"skill":   skill,
+		"log":     log,
+		"blame":   blame,
+		"rebase":  rebase,
 	}
 	name := args[0]
 	if name == "-v" || name == "-version" || name == "--version" {
@@ -471,9 +486,16 @@ func status(ctx context.Context, args []string) error {
 	if target == "" {
 		target = "(new branch on first commit)"
 	}
+	rebasing := ""
+	if w.Rebasing() {
+		rebasing = fmt.Sprintf("A rebase is stopped on a conflict: fix the files, then `%s rebase --continue` (or `--skip` / `--abort`).", prog)
+	}
 	if *md {
 		fmt.Printf("## Workspace `%s`\n\n", st.Remote)
 		fmt.Printf("- Base: `%s` (cloned from `%s`)\n- Pushes to: `%s`\n\n", st.Base[:12], st.Ref, target)
+		if rebasing != "" {
+			fmt.Printf("**%s**\n\n", rebasing)
+		}
 		if len(changes) == 0 {
 			fmt.Println("No changes.")
 			return nil
@@ -486,6 +508,9 @@ func status(ctx context.Context, args []string) error {
 		return nil
 	}
 	fmt.Printf("on %s @ %s -> %s\n", st.Ref, st.Base[:12], target)
+	if rebasing != "" {
+		fmt.Println(rebasing)
+	}
 	for _, c := range changes {
 		fmt.Printf("%s\t%s\n", map[workspace.Kind]string{workspace.Added: "A", workspace.Modified: "M", workspace.Deleted: "D"}[c.Kind], c.Path)
 	}

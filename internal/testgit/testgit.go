@@ -26,6 +26,15 @@ func Run(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// RunErr runs git in dir and returns its raw stdout and error, for
+// commands whose exit status is the answer (e.g. merge-file).
+func RunErr(dir string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	return string(out), err
+}
+
 // Serve seeds a bare repo and serves it with git daemon. It returns the
 // remote URL and a working clone for simulating other writers.
 func Serve(t *testing.T) (remote, clone string) {

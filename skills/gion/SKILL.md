@@ -25,6 +25,9 @@ gion grep owner/repo 'func New\w+\(' --md       # search contents in the whole r
 gion grep owner/repo 'TODO' --path src --md     # limit to paths
 gion diff owner/repo main~1 main --md           # what changed between commits
 gion diff owner/repo HEAD --name-status         # what the last commit changed
+gion log  owner/repo main -n 20 --md            # recent commits
+gion log  owner/repo --path src/api --md        # commits that changed a path
+gion blame owner/repo HEAD:src/app.go -L 40,60 --md   # who last changed these lines
 gion ls-refs owner/repo                         # branches and tags
 ```
 
@@ -53,7 +56,11 @@ gion commit -m "msg" --branch my-fix --md      # first push creates the branch
 gion commit -m "more" --md                     # later pushes update it
 gion sync --md                   # pull upstream changes into unedited files
 gion switch other-branch --md    # move to an existing branch, keeping edits
+gion log --md                    # history of what's checked out; gion blame <file> --md
+gion rebase --md                 # replay your branch onto the default branch and push it
 ```
+
+**Rebase conflicts.** `gion rebase` stops on a conflict and lists the files. Each has markers: `<<<<<<< <new base>` (upstream's version), `||||||| base` (before either change), `=======`, then `>>>>>>> <commit>` (your change). Edit the file to the final content, keeping both intents where they don't contradict (or delete the file to accept a deletion), check with `gion diff --md`, then `gion rebase --continue --md`. `--skip` drops that commit; `--abort` restores everything. Nothing is pushed until it finishes, and the push is compare-and-swap. Without a workspace, `gion rebase owner/repo my-branch --md` works when there are no conflicts.
 
 Pushes are compare-and-swap: if someone else pushed to the branch on other files, gion builds on top and writes their files to disk; if they touched your files, it stops and lists them. The `--md` output of a new branch includes a link to open a PR.
 
@@ -64,5 +71,5 @@ Pushes are compare-and-swap: if someone else pushed to the branch on other files
 - Push to a branch, not the default branch, unless told to.
 - To run tests in a workspace, `gion add` the test directories and the code they import. If that's most of the repo, push the branch and let CI run them.
 - Pushes can't be undone by force-push: check `gion status --md` before each commit so ignored or generated files don't slip in.
-- `gion` has no merge or rebase. If a push reports a conflict, tell the user.
+- `gion` has no merge: bring a branch up to date with `gion rebase`. If a conflict's right resolution isn't clear from the code, ask the user instead of guessing.
 - Run `gion help` for every flag.

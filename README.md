@@ -91,6 +91,8 @@ Agents without the skill can run `gion help --md`, which prints the same guide.
 | `clone <remote> <dir> [--path p]...` | Create a workspace with only the chosen paths (default: everything) at one commit. It has no history and no `.git` directory. The files directly inside each parent directory of a path (the root's `.gitignore`, `pyproject.toml`, `go.mod`, ...) come too, so ignore rules, linters and test config work. |
 | `status` | Inside a workspace: added, modified and deleted files. Untracked files matched by `.gitignore` are skipped. |
 | `diff [<path>...] [--name-only \| --name-status]` | Inside a workspace: your edits as a unified diff, optionally limited to paths. |
+| `log [<path>]`, `blame <path>` | Inside a workspace: history of the workspace's commit. |
+| `rebase [<onto>]` | Inside a workspace: replay your branch onto `<onto>` (default: the default branch) and push it. On a conflict the files get markers (`<<<<<<<` new base, `\|\|\|\|\|\|\|` original, `=======`, `>>>>>>>` your commit); fix them and run `rebase --continue`, or `--skip` / `--abort`. Nothing is pushed until it finishes. |
 | `add <path>...` | Inside a workspace: widen it with more files or directories at the workspace's commit. A path that doesn't exist yet just joins the workspace, so new files there are committed. |
 | `sync` | Inside a workspace: bring files up to date with the branch. Files you've edited are kept; if upstream changed them too, nothing is written and the conflicting paths are listed. |
 | `switch <branch>` | Inside a workspace: move to an existing branch. Only files that differ are rewritten; your edits are kept (nothing changes if they conflict). Later commits go to that branch. |
@@ -99,6 +101,9 @@ Agents without the skill can run `gion help --md`, which prints the same guide.
 | `skill install [--project]` | Install the agent skill for Claude Code and agents that read `.agents/skills`. |
 | `tag <remote> <name> [<rev>] [-m msg]` | Create a tag on the remote, annotated if `-m` is given. Refuses to move an existing tag. |
 | `commit <remote> -m <msg> <path>=<file>... [--rm p]` | Commit without any workspace. `--to <branch>` updates an existing branch instead of creating one; `--orphan` makes a root commit (e.g. in an empty repo). |
+| `log <remote> [<rev>] [-n N] [--path p]` | Commits newest first (one round trip for plain logs). `--path` keeps the commits that changed it, using git's default history simplification; GitHub answers that directly, elsewhere history is walked locally. |
+| `blame <remote> <rev>:<path> [-L a,b]` | The commit that last changed each line. Uses GitHub's blame API when available, else computes it from the file's history. |
+| `rebase <remote> <branch> [--onto <rev>]` | Replay a branch onto another (default: the default branch) and push it with compare-and-swap. Without a workspace it only succeeds when there are no conflicts. |
 
 Add `--md` for Markdown output that agents can read.
 
@@ -164,7 +169,8 @@ Set `GION_TRACE=1` to log each request's protocol lines and timings to stderr.
 
 ## Limitations
 
-- **No merging.** `sync` and `commit` refuse when upstream changed the same files you edited; resolve by committing elsewhere or undoing the edit.
+- **No merge command.** Bring a branch up to date with `rebase`. `sync` and `commit` still refuse when upstream changed the same files you have uncommitted edits in.
+- **History walks are local outside GitHub.** `log --path` and `blame` on huge repos are fast only with GitHub's APIs (they need credentials); elsewhere they walk history, a few hundred commits per round trip. Local `blame` doesn't follow renames.
 - **Commits are unsigned.**
 - **Whole-repo `grep` on big repos depends on GitHub code search**, so it covers the default branch's index only, is rate-limited (about 10 searches a minute), and isn't available on other forges yet.
 - **Full-repo clones are slower than `git clone --depth 1`.** Fetching only the paths you need is the intended use.

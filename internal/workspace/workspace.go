@@ -501,6 +501,9 @@ type CommitResult struct {
 // to pushes onto an existing branch instead (compare-and-swap, accepting
 // upstream moves only on other paths), and makes it the workspace's branch.
 func (w *Workspace) Commit(ctx context.Context, r *repo.Repo, msg, branch, to string) (CommitResult, error) {
+	if err := w.guardRebase(); err != nil {
+		return CommitResult{}, err
+	}
 	if branch != "" && to != "" {
 		return CommitResult{}, errors.New("--branch creates a new branch and --to updates an existing one; pick one")
 	}
@@ -577,6 +580,9 @@ type SyncResult struct {
 // before the first commit). Local edits are kept; if upstream changed the
 // same files differently, nothing is written and ErrLocalConflict lists them.
 func (w *Workspace) Sync(ctx context.Context, r *repo.Repo) (SyncResult, error) {
+	if err := w.guardRebase(); err != nil {
+		return SyncResult{}, err
+	}
 	target := w.State.Ref
 	if w.State.Branch != "" {
 		target = "refs/heads/" + w.State.Branch
@@ -696,6 +702,9 @@ func (w *Workspace) pruneEmptyDirs(p string) {
 // between the current base and the branch tip are rewritten, local edits are
 // kept (nothing changes if they conflict), and later commits go to branch.
 func (w *Workspace) Switch(ctx context.Context, r *repo.Repo, branch string) (SyncResult, error) {
+	if err := w.guardRebase(); err != nil {
+		return SyncResult{}, err
+	}
 	branch = strings.TrimPrefix(branch, "refs/heads/")
 	tip, err := r.Resolve(ctx, "refs/heads/"+branch)
 	if errors.Is(err, repo.ErrNotExist) {
@@ -760,6 +769,9 @@ type AddResult struct {
 // then.
 func (w *Workspace) Add(ctx context.Context, r *repo.Repo, paths []string) (AddResult, error) {
 	var res AddResult
+	if err := w.guardRebase(); err != nil {
+		return res, err
+	}
 	if len(w.State.Paths) == 0 {
 		return res, errors.New("this workspace already holds the whole repo")
 	}

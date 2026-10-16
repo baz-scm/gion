@@ -375,3 +375,22 @@ func (r *Repo) RootTree(ctx context.Context, rev string) (commit, tree plumbing.
 	}
 	return commit, c.TreeHash, nil
 }
+
+// DefaultBranch returns the branch the remote's HEAD points at.
+func (r *Repo) DefaultBranch(ctx context.Context) (string, error) {
+	s, err := wire.Open(ctx, r.Remote)
+	if err != nil {
+		return "", err
+	}
+	defer s.Close()
+	refs, err := s.LsRefs(ctx, []string{"HEAD"})
+	if err != nil {
+		return "", err
+	}
+	for _, ref := range refs {
+		if ref.Name == "HEAD" && strings.HasPrefix(ref.Target, "refs/heads/") {
+			return strings.TrimPrefix(ref.Target, "refs/heads/"), nil
+		}
+	}
+	return "", errors.New("the remote's HEAD isn't a branch; name the branch to rebase onto")
+}

@@ -25,11 +25,21 @@ const FilterNoBlobs = packp.Filter("blob:none")
 // Filters only drop trees and blobs, never commits, so a commit want without
 // depth would pull its entire history. Depth 1 keeps it to the commit itself.
 func (s *Session) Fetch(ctx context.Context, wants []plumbing.Hash, filter packp.Filter) ([]plumbing.EncodedObject, error) {
+	return s.fetch(ctx, wants, filter, 1)
+}
+
+// FetchHistory downloads the commits within depth of each want, with no
+// trees or blobs: the cheap way to walk history.
+func (s *Session) FetchHistory(ctx context.Context, wants []plumbing.Hash, depth int) ([]plumbing.EncodedObject, error) {
+	return s.fetch(ctx, wants, FilterExact, depth)
+}
+
+func (s *Session) fetch(ctx context.Context, wants []plumbing.Hash, filter packp.Filter, depth int) ([]plumbing.EncodedObject, error) {
 	if len(wants) == 0 {
 		return nil, nil
 	}
 	st := memory.NewStorage()
-	err := s.sess.Fetch(ctx, st, &transport.FetchRequest{Wants: wants, Filter: filter, Depth: 1})
+	err := s.sess.Fetch(ctx, st, &transport.FetchRequest{Wants: wants, Filter: filter, Depth: depth})
 	if err != nil && !errors.Is(err, transport.ErrNoChange) {
 		return nil, fmt.Errorf("fetch %d objects: %w", len(wants), err)
 	}
