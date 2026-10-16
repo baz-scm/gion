@@ -170,3 +170,28 @@ func TestMerge3MatchesGitMergeFile(t *testing.T) {
 		}
 	}
 }
+
+func TestStatsMatchGitNumstat(t *testing.T) {
+	remote, clone := historyRepo(t)
+	r := openTest(t, remote)
+	ctx := context.Background()
+	from := testgit.Run(t, clone, "rev-list", "--max-parents=0", "main")
+	to := testgit.Run(t, clone, "rev-parse", "main")
+	fc, _ := r.Commit(ctx, plumbing.NewHash(from))
+	tc, _ := r.Commit(ctx, plumbing.NewHash(to))
+	ds, err := r.Changes(ctx, fc.TreeHash, tc.TreeHash, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats, err := r.Stats(ctx, ds, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, s := range stats {
+		got = append(got, fmt.Sprintf("%d\t%d\t%s", s.Added, s.Deleted, s.Path))
+	}
+	if want := testgit.Run(t, clone, "diff", "--numstat", from, to); strings.Join(got, "\n") != want {
+		t.Fatalf("stats:\n%s\ngit --numstat:\n%s", strings.Join(got, "\n"), want)
+	}
+}

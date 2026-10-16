@@ -37,6 +37,13 @@ jobs:
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - run: go test -race ./...
+      - name: docs/reference.md is up to date
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          if ! go run . help --reference | diff -u docs/reference.md -; then
+            echo "::error::docs/reference.md is stale; regenerate it with go run . help --reference > docs/reference.md"
+            exit 1
+          fi
 
   # Builds every release artifact without publishing, so a broken
   # .goreleaser.yaml fails here instead of at tag time. Skipped when the

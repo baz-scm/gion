@@ -1,0 +1,42 @@
+site_name: gion
+site_description: A small asymmetric git client for agents and CI
+site_url: https://baz-scm.github.io/gion/
+repo_url: https://github.com/baz-scm/gion
+repo_name: baz-scm/gion
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/brightness-7, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/brightness-4, name: Light mode }
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.highlight
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Guides:
+      - Workspaces: workspaces.md
+      - Branches & rebase: branches.md
+      - Search & history: search-and-history.md
+      - Agents: agents.md
+      - CI: ci.md
+  - Command reference: reference.md
+  - How it works: how-it-works.md
+  - Performance: performance.md
+  - Limitations & FAQ: limitations.md

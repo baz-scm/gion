@@ -24,7 +24,7 @@ gion find owner/repo 'handler' --md             # search paths in the whole repo
 gion grep owner/repo 'func New\w+\(' --md       # search contents in the whole repo
 gion grep owner/repo 'TODO' --path src --md     # limit to paths
 gion diff owner/repo main~1 main --md           # what changed between commits
-gion diff owner/repo HEAD --name-status         # what the last commit changed
+gion diff owner/repo HEAD --stat                # what the last commit changed (--name-status, or a full diff without flags)
 gion log  owner/repo main -n 20 --md            # recent commits
 gion log  owner/repo --path src/api --md        # commits that changed a path
 gion blame owner/repo HEAD:src/app.go -L 40,60 --md   # who last changed these lines

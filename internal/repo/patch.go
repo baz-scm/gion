@@ -146,3 +146,65 @@ type chunk struct {
 
 func (c chunk) Content() string       { return c.content }
 func (c chunk) Type() fdiff.Operation { return c.op }
+
+// FileStat is one file's line counts in a diff.
+type FileStat struct {
+	Path             string
+	Added, Deleted   int
+	Binary           bool
+	OldSize, NewSize int
+}
+
+// Stats counts added and deleted lines per file, fetching every needed blob
+// in one round trip. content overrides blobs as in WritePatch.
+func (r *Repo) Stats(ctx context.Context, ds []FileDiff, content map[plumbing.Hash][]byte) ([]FileStat, error) {
+	var need []plumbing.Hash
+	for _, d := range ds {
+		for _, e := range []*FileEntry{d.Old, d.New} {
+			if e != nil {
+				if _, ok := content[e.Hash]; !ok {
+					need = append(need, e.Hash)
+				}
+			}
+		}
+	}
+	if err := r.Ensure(ctx, need...); err != nil {
+		return nil, err
+	}
+	read := func(e *FileEntry) ([]byte, error) {
+		if e == nil {
+			return nil, nil
+		}
+		if b, ok := content[e.Hash]; ok {
+			return b, nil
+		}
+		return r.Blob(ctx, e.Hash)
+	}
+	out := make([]FileStat, 0, len(ds))
+	for _, d := range ds {
+		a, err := read(d.Old)
+		if err != nil {
+			return nil, err
+		}
+		b, err := read(d.New)
+		if err != nil {
+			return nil, err
+		}
+		st := FileStat{Path: d.Path, OldSize: len(a), NewSize: len(b)}
+		if isBinary(a) || isBinary(b) {
+			st.Binary = true
+		} else {
+			for _, c := range diff.Do(string(a), string(b)) {
+				n := len(splitLines(c.Text))
+				switch c.Type {
+				case diffmatchpatch.DiffInsert:
+					st.Added += n
+				case diffmatchpatch.DiffDelete:
+					st.Deleted += n
+				}
+			}
+		}
+		out = append(out, st)
+	}
+	return out, nil
+}

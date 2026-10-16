@@ -37,7 +37,7 @@ commands:
           commit, no history, no .git. Then, inside it:
   status                               changed files vs. the clone
                                        (honors .gitignore)
-  diff    [<path>...] [--name-only|--name-status]
+  diff    [<path>...] [--stat|--name-only|--name-status]
                                        your edits as a unified diff
   log     [<path>]  /  blame <path>    history of the workspace's commit
   rebase  [<onto>]                     replay your branch onto <onto> (default:
@@ -62,7 +62,7 @@ commands:
           --to: update an existing branch (compare-and-swap, retries on
           upstream moves that don't touch your paths).
 
-  diff    <remote> [<rev>] [<rev>] [--path p]... [--name-only|--name-status] [-U n]
+  diff    <remote> [<rev>] [<rev>] [--path p]... [--stat|--name-only|--name-status] [-U n]
           what changed between two commits (a b or a..b), or what one commit
           changed (default HEAD). only the trees and files that differ are fetched
   log     <remote> [<rev>] [-n N] [--path p] [--oneline]
@@ -130,8 +130,12 @@ func Main(invokedAs string, args []string) int {
 	}
 	if name == "-h" || name == "--help" || name == "help" {
 		for _, a := range args[1:] {
-			if a == "--md" || a == "-md" {
+			switch a {
+			case "--md", "-md":
 				fmt.Print(agentGuide())
+				return 0
+			case "--reference":
+				fmt.Print(reference(usage, cmds))
 				return 0
 			}
 		}
@@ -144,6 +148,9 @@ func Main(invokedAs string, args []string) int {
 		return 2
 	}
 	err := fn(ctx, args[1:])
+	if errors.Is(err, errHelpShown) {
+		return 0
+	}
 	if name != "gc" && name != "version" && name != "skill" {
 		cache.MaybeEvict() // at most hourly; keeps ~/.gion under GION_CACHE_MAX
 	}
@@ -159,12 +166,23 @@ type multiFlag []string
 func (m *multiFlag) String() string     { return fmt.Sprint(*m) }
 func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 
-// parse lets flags and positionals mix in any order.
+// helpOut is where `<command> -h` prints; the reference generator swaps it.
+var helpOut io.Writer = os.Stdout
+
+// errHelpShown ends a command after it printed its -h help.
+var errHelpShown = errors.New("help shown")
+
+// parse lets flags and positionals mix in any order. -h prints the
+// command's flags.
 func parse(fs *flag.FlagSet, args []string) ([]string, error) {
 	fs.SetOutput(io.Discard)
 	var pos []string
 	for {
 		if err := fs.Parse(args); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				printFlags(helpOut, fs)
+				return nil, errHelpShown
+			}
 			return nil, fmt.Errorf("%s: %w", fs.Name(), err)
 		}
 		args = fs.Args()

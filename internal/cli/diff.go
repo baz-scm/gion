@@ -23,6 +23,7 @@ func diff(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	nameOnly := fs.Bool("name-only", false, "print only changed paths")
 	nameStatus := fs.Bool("name-status", false, "print changed paths with A/M/D")
+	stat := fs.Bool("stat", false, "print lines added and removed per file")
 	unified := fs.Int("U", 3, "lines of context")
 	md := fs.Bool("md", false, "markdown output")
 	var paths multiFlag
@@ -31,7 +32,7 @@ func diff(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	out := diffOut{nameOnly: *nameOnly, nameStatus: *nameStatus, context: *unified, md: *md}
+	out := diffOut{nameOnly: *nameOnly, nameStatus: *nameStatus, stat: *stat, context: *unified, md: *md}
 
 	// Inside a workspace, arguments that are local paths limit the diff of
 	// your edits (like `git diff <path>`); otherwise the first is a remote.
@@ -183,12 +184,15 @@ func cleanPaths(paths []string) []string {
 }
 
 type diffOut struct {
-	nameOnly, nameStatus, md bool
-	context                  int
-	title                    string
+	nameOnly, nameStatus, stat, md bool
+	context                        int
+	title                          string
 }
 
 func (o diffOut) print(ctx context.Context, r *repo.Repo, ds []repo.FileDiff, content map[plumbing.Hash][]byte) error {
+	if o.stat {
+		return o.printStat(ctx, r, ds, content)
+	}
 	if o.md {
 		fmt.Printf("## %s\n\n", o.title)
 		if len(ds) == 0 {
@@ -278,4 +282,70 @@ func backticks(ps []string) string {
 		q[i] = "`" + p + "`"
 	}
 	return strings.Join(q, ", ")
+}
+
+// printStat prints git's --stat: per-file counts with a +/- bar, then totals.
+func (o diffOut) printStat(ctx context.Context, r *repo.Repo, ds []repo.FileDiff, content map[plumbing.Hash][]byte) error {
+	stats, err := r.Stats(ctx, ds, content)
+	if err != nil {
+		return err
+	}
+	var add, del int
+	for _, s := range stats {
+		add, del = add+s.Added, del+s.Deleted
+	}
+	summary := fmt.Sprintf("%d file%s changed, %d insertion%s(+), %d deletion%s(-)", len(stats), plural(len(stats)), add, plural(add), del, plural(del))
+	if o.md {
+		fmt.Printf("## %s\n\n", o.title)
+		if len(stats) == 0 {
+			fmt.Println("No changes.")
+			return nil
+		}
+		fmt.Println("| file | + | - |\n| --- | ---: | ---: |")
+		for _, s := range stats {
+			if s.Binary {
+				fmt.Printf("| `%s` | binary | %d → %d bytes |\n", s.Path, s.OldSize, s.NewSize)
+				continue
+			}
+			fmt.Printf("| `%s` | %d | %d |\n", s.Path, s.Added, s.Deleted)
+		}
+		fmt.Printf("\n%s.\n", summary)
+		return nil
+	}
+	width, most := 0, 0
+	for _, s := range stats {
+		width = max(width, len(s.Path))
+		most = max(most, s.Added+s.Deleted)
+	}
+	const bar = 50
+	digits := len(fmt.Sprint(most))
+	for _, s := range stats {
+		if s.Binary {
+			fmt.Printf(" %-*s | Bin %d -> %d bytes\n", width, s.Path, s.OldSize, s.NewSize)
+			continue
+		}
+		a, d := s.Added, s.Deleted
+		if most > bar { // scale like git, keeping at least one mark per side
+			a, d = scale(a, most, bar), scale(d, most, bar)
+		}
+		fmt.Printf(" %-*s | %*d %s%s\n", width, s.Path, digits, s.Added+s.Deleted, strings.Repeat("+", a), strings.Repeat("-", d))
+	}
+	if len(stats) > 0 {
+		fmt.Println(" " + summary)
+	}
+	return nil
+}
+
+func scale(n, most, bar int) int {
+	if n == 0 {
+		return 0
+	}
+	return max(1, n*bar/most)
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
