@@ -11,7 +11,7 @@ Add `--md` to every command: output is Markdown made for agents.
 
 ## Setup
 
-- Install: `go install github.com/baz-scm/gion@latest` (binary lands in `$(go env GOPATH)/bin`).
+- Install: `go install github.com/baz-scm/gion@latest` (binary lands in `$(go env GOPATH)/bin`), then `gion skill install` to keep this skill in sync with the binary.
 - Auth (only needed for private repos and pushes): `gh auth login`, or set `GITHUB_TOKEN`, or a git credential helper. gion never stores credentials.
 - `<remote>` is `owner/repo` (GitHub) or any git URL. `<rev>` is a branch, tag, `HEAD`, a commit id (short ids work on GitHub), with optional `~N`/`^N` (`main~2`).
 

@@ -63,10 +63,15 @@ func dial(ctx context.Context, remote, service string, ver protocol.Version) (tr
 	var opts []client.Option
 	if u.Scheme == "https" || u.Scheme == "http" {
 		a, err := auth.ForURL(ctx, u)
-		if err != nil {
+		switch {
+		case errors.Is(err, auth.ErrNoCredentials):
+			// Try anonymously: enough to read public repos. Pushes and
+			// private repos fail with the server's auth error.
+		case err != nil:
 			return nil, nil, err
+		default:
+			opts = append(opts, client.WithHTTPAuth(a))
 		}
-		opts = append(opts, client.WithHTTPAuth(a))
 		if tracing {
 			opts = append(opts, client.WithHTTPClient(&http.Client{Transport: traceTransport{http.DefaultTransport}}))
 		}

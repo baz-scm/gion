@@ -63,6 +63,9 @@ commands:
           create a tag on the remote (annotated with -m); never moves one
   gc      [--max SIZE]                 trim the cache (~/.gion) now and show its
                                        size; it's also trimmed automatically
+  skill   install [--project]          install the agent skill for Claude Code and
+                                       agents reading .agents/skills (home dir,
+                                       or the current project with --project)
   version                              print the gion version
 
 <remote> is a URL or GitHub "owner/repo".
@@ -103,6 +106,7 @@ func Main(invokedAs string, args []string) int {
 		"switch":  switchCmd,
 		"diff":    diff,
 		"add":     add,
+		"skill":   skill,
 	}
 	name := args[0]
 	if name == "-v" || name == "-version" || name == "--version" {
@@ -124,7 +128,7 @@ func Main(invokedAs string, args []string) int {
 		return 2
 	}
 	err := fn(ctx, args[1:])
-	if name != "gc" && name != "version" {
+	if name != "gc" && name != "version" && name != "skill" {
 		cache.MaybeEvict() // at most hourly; keeps ~/.gion under GION_CACHE_MAX
 	}
 	if err != nil {

@@ -53,11 +53,18 @@ Or download a prebuilt binary for Linux or macOS from [Releases](https://github.
 
 gion keeps a cache in `~/.gion` (see [How it works](#how-it-works)). It includes a `CACHEDIR.TAG`, so backup tools such as restic and borg skip it; on macOS, exclude it from Time Machine with `tmutil addexclusion ~/.gion`.
 
-Credentials are borrowed, never stored. gion tries, in order: the `GITHUB_TOKEN` environment variable (for github.com only; in GitHub Actions use the built-in `secrets.GITHUB_TOKEN`), then `gh auth token`, then your `git credential` helper.
+Credentials are borrowed, never stored. gion tries, in order: the `GITHUB_TOKEN` environment variable (for github.com only; in GitHub Actions use the built-in `secrets.GITHUB_TOKEN`), then `gh auth token`, then your `git credential` helper. With none of them, gion reads public repos anonymously; pushes and private repos need one.
 
 ## For agents
 
-gion ships an [agent skill](skills/gion/SKILL.md) that teaches coding agents to read, search and push without cloning. Install it with the [skills](https://skills.sh) CLI:
+gion ships an [agent skill](skills/gion/SKILL.md) that teaches coding agents to read, search and push without cloning. The binary carries it, so the skill always matches your gion version:
+
+```sh
+gion skill install            # ~/.claude/skills (Claude Code) and ~/.agents/skills (Codex, Cursor, Amp, ...)
+gion skill install --project  # the same, inside the current project
+```
+
+Rerun it after upgrading gion. Or install it with the [skills](https://skills.sh) CLI, which tracks `main`:
 
 ```sh
 npx skills add baz-scm/gion
@@ -85,6 +92,7 @@ Agents without the skill can run `gion help --md`, which prints the same guide.
 | `switch <branch>` | Inside a workspace: move to an existing branch. Only files that differ are rewritten; your edits are kept (nothing changes if they conflict). Later commits go to that branch. |
 | `commit -m <msg> [--branch b \| --to b]` | Inside a workspace: push your changes. By default the first commit creates a branch (`gion/<timestamp>`, or `--branch b`) and later commits update it. `--to b` pushes onto an existing branch instead. If someone else pushed to the branch on other files, their changes are written to disk too. |
 | `gc [--max SIZE]` | Trim the cache in `~/.gion` to its size cap now and print its size. |
+| `skill install [--project]` | Install the agent skill for Claude Code and agents that read `.agents/skills`. |
 | `tag <remote> <name> [<rev>] [-m msg]` | Create a tag on the remote, annotated if `-m` is given. Refuses to move an existing tag. |
 | `commit <remote> -m <msg> <path>=<file>... [--rm p]` | Commit without any workspace. `--to <branch>` updates an existing branch instead of creating one; `--orphan` makes a root commit (e.g. in an empty repo). |
 
