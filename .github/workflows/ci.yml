@@ -17,8 +17,20 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      # Dogfooding: check out with the latest gion release instead of
+      # actions/checkout, so every run also tests that gion can clone. gion
+      # (all versions) borrows GH_TOKEN through `gh auth token`.
+      - name: Install gion (latest release)
+        run: |
+          os=$(uname -s | tr '[:upper:]' '[:lower:]')
+          case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac
+          gh release download -R baz-scm/gion --pattern "gion_*_${os}_${arch}.tar.gz" -O - | tar -xz -C "$RUNNER_TEMP" gion
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Check out with gion
+        run: gion clone "$GITHUB_REPOSITORY" . --ref "$GITHUB_SHA" --md
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -29,13 +41,25 @@ jobs:
   # Builds every release artifact without publishing, so a broken
   # .goreleaser.yaml fails here instead of at tag time. Skipped when the
   # release workflow runs CI for a tag: the real release build follows.
+  # A snapshot doesn't need a git repo (GoReleaser uses placeholder version
+  # info), so gion can check it out; the real release still needs .git.
   release-dry-run:
     if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      # Dogfooding: check out with the latest gion release instead of
+      # actions/checkout, so every run also tests that gion can clone. gion
+      # (all versions) borrows GH_TOKEN through `gh auth token`.
+      - name: Install gion (latest release)
+        run: |
+          os=$(uname -s | tr '[:upper:]' '[:lower:]')
+          case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac
+          gh release download -R baz-scm/gion --pattern "gion_*_${os}_${arch}.tar.gz" -O - | tar -xz -C "$RUNNER_TEMP" gion
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Check out with gion
+        run: gion clone "$GITHUB_REPOSITORY" . --ref "$GITHUB_SHA" --md
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
