@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"runtime"
 	"runtime/debug"
@@ -26,7 +27,10 @@ func Version() string {
 	return "dev"
 }
 
-func versionCmd(_ context.Context, _ []string) error {
+func versionCmd(_ context.Context, args []string) error {
+	if _, err := parse(flag.NewFlagSet("version", flag.ContinueOnError), args); err != nil {
+		return err
+	}
 	c := buildCommit
 	if c == "" {
 		if bi, ok := debug.ReadBuildInfo(); ok {
