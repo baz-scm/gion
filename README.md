@@ -39,17 +39,21 @@ gion applies the client half of that idea to existing git servers.
 
 ## Install
 
+On macOS or Linux, no Go needed:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/baz-scm/gion/main/install.sh | sh
+```
+
+It downloads the latest [release](https://github.com/baz-scm/gion/releases) binary, verifies its checksum and puts it in `~/.local/bin` (set `GION_INSTALL_DIR` to change that, `GION_VERSION=v0.2.0` to pin a version). Rerun it to upgrade.
+
+With Go installed you can also use:
+
 ```sh
 go install github.com/baz-scm/gion@latest
 ```
 
-This puts `gion` in `$(go env GOPATH)/bin` (usually `~/go/bin`). If your shell says `command not found`, add that directory to your `PATH`:
-
-```sh
-echo 'export PATH="$PATH:$(go env GOPATH)/bin"' >> ~/.zshrc && source ~/.zshrc
-```
-
-Or download a prebuilt binary for Linux or macOS from [Releases](https://github.com/baz-scm/gion/releases). Run `gion version` to see what you have.
+That puts `gion` in `$(go env GOPATH)/bin` (usually `~/go/bin`); add it to your `PATH` if your shell says `command not found`. Run `gion version` to see what you have.
 
 gion keeps a cache in `~/.gion` (see [How it works](#how-it-works)). It includes a `CACHEDIR.TAG`, so backup tools such as restic and borg skip it; on macOS, exclude it from Time Machine with `tmutil addexclusion ~/.gion`.
 
