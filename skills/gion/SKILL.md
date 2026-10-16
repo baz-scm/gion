@@ -5,7 +5,7 @@ description: Read, search, diff and push to remote git repositories (GitHub owne
 
 # gion: work with git repos without cloning them
 
-gion reads files, trees and commits from the remote on demand and pushes commits straight to it. There is no `.git` and no history on disk. Prefer it over `git clone` for any repo you don't already have checked out.
+gion reads files, trees and commits from the remote on demand and pushes commits straight to it. There is no `.git` and no history on disk. Prefer it over `git clone` for any repo you don't already have checked out. If the repo is already checked out locally and up to date, just use that checkout and git.
 
 Add `--md` to every command: output is Markdown made for agents.
 
@@ -40,14 +40,14 @@ gion commit owner/repo -m "msg" --branch my-fix src/a.go=./a.go --rm src/old.go 
 
 `--branch b` creates `b` from `HEAD` (`--onto <rev>` for another base). `--to b` updates an existing branch.
 
-**Real coding: a sparse workspace.** Clone only the directories the task touches:
+**Real coding: a sparse workspace.** Clone only the directories the task touches. The files in their parent directories (root included) come along, so `.gitignore`, `pyproject.toml`, `package.json`, `go.mod`, `conftest.py` and lint configs are there; edits to them are committed, new files next to them are not unless you `gion add` them.
 
 ```sh
 gion clone owner/repo ./ws --path src/api --path go.mod --md
 cd ws
 # edit with your normal file tools
 gion status --md                 # what changed
-gion diff --md                   # your edits as a diff
+gion diff --md                   # your edits as a diff (gion diff <path> for one file or dir)
 gion add src/shared --md         # need another directory? widen the workspace
 gion commit -m "msg" --branch my-fix --md      # first push creates the branch
 gion commit -m "more" --md                     # later pushes update it
@@ -62,5 +62,7 @@ Pushes are compare-and-swap: if someone else pushed to the branch on other files
 - Never `git clone` or `gion clone` without `--path` just to read or search: use `cat`, `find`, `grep`.
 - Inside a sparse workspace, your file tools only see the cloned paths. Search the rest of the repo with `gion grep <remote>` / `gion find <remote>`, and `gion add` what you need to edit.
 - Push to a branch, not the default branch, unless told to.
+- To run tests in a workspace, `gion add` the test directories and the code they import. If that's most of the repo, push the branch and let CI run them.
+- Pushes can't be undone by force-push: check `gion status --md` before each commit so ignored or generated files don't slip in.
 - `gion` has no merge or rebase. If a push reports a conflict, tell the user.
 - Run `gion help` for every flag.

@@ -37,7 +37,8 @@ commands:
           commit, no history, no .git. Then, inside it:
   status                               changed files vs. the clone
                                        (honors .gitignore)
-  diff    [--name-only|--name-status]  your edits as a unified diff
+  diff    [<path>...] [--name-only|--name-status]
+                                       your edits as a unified diff
   add     <path>...                    widen the workspace with more paths
                                        (a new path just joins the scope)
   sync                                 pull upstream changes into files you

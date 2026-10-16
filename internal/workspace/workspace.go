@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -44,7 +45,13 @@ type State struct {
 	// Branch is where commits go. Empty until the first commit creates one.
 	Branch string `json:"branch,omitempty"`
 	// Paths limits the workspace; empty means the whole repo.
-	Paths []string             `json:"paths,omitempty"`
+	Paths []string `json:"paths,omitempty"`
+	// Dirs are the parent directories of Paths ("" is the root). Their own
+	// files (not subdirectories) are fetched too, since that's where config
+	// lives: .gitignore, pyproject.toml, go.mod, package.json, conftest.py.
+	// Edits to those files are committed; new files there are not, unless
+	// added with `gion add`.
+	Dirs  []string             `json:"dirs,omitempty"`
 	Files map[string]FileState `json:"files"`
 }
 
@@ -153,6 +160,16 @@ func Clone(ctx context.Context, r *repo.Repo, dir, ref string, paths []string) (
 		}
 	}
 
+	var dirs []string
+	if len(clean) > 0 {
+		dirs = ancestorDirs(clean)
+		more, err := contextFiles(ctx, r, root, dirs, func(p string) bool { return covered(clean, p) })
+		if err != nil {
+			return nil, CloneResult{}, err
+		}
+		files = append(files, more...)
+	}
+
 	blobs := make([]plumbing.Hash, len(files))
 	for i, f := range files {
 		blobs[i] = f.Hash
@@ -165,7 +182,7 @@ func Clone(ctx context.Context, r *repo.Repo, dir, ref string, paths []string) (
 		return nil, CloneResult{}, err
 	}
 	w := &Workspace{Dir: dir, State: State{
-		Remote: r.Remote, Ref: ref, Base: commit.String(), Paths: clean,
+		Remote: r.Remote, Ref: ref, Base: commit.String(), Paths: clean, Dirs: dirs,
 		Files: make(map[string]FileState, len(files)),
 	}}
 	res := CloneResult{Commit: commit}
@@ -216,15 +233,80 @@ func (w *Workspace) record(p string, oid plumbing.Hash, mode filemode.FileMode) 
 
 // inScope reports whether p is inside the workspace's chosen paths.
 func (w *Workspace) inScope(p string) bool {
-	if len(w.State.Paths) == 0 {
-		return true
-	}
-	for _, s := range w.State.Paths {
+	return len(w.State.Paths) == 0 || covered(w.State.Paths, p)
+}
+
+// covered reports whether p is one of paths or under one.
+func covered(paths []string, p string) bool {
+	for _, s := range paths {
 		if p == s || strings.HasPrefix(p, s+"/") {
 			return true
 		}
 	}
 	return false
+}
+
+// inContext reports whether p is a file directly inside one of Dirs.
+func (w *Workspace) inContext(p string) bool {
+	d := path.Dir(p)
+	if d == "." {
+		d = ""
+	}
+	for _, x := range w.State.Dirs {
+		if x == d {
+			return true
+		}
+	}
+	return false
+}
+
+// ancestorDirs returns every parent directory of paths, root ("") included,
+// sorted and without duplicates.
+func ancestorDirs(paths []string) []string {
+	seen := map[string]bool{"": true}
+	for _, p := range paths {
+		for d := path.Dir(p); d != "." && d != "/"; d = path.Dir(d) {
+			seen[d] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for d := range seen {
+		out = append(out, d)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// contextFiles lists the files (not subdirectories or submodules) directly
+// inside each of dirs in tree root, except those skip accepts.
+func contextFiles(ctx context.Context, r *repo.Repo, root plumbing.Hash, dirs []string, skip func(string) bool) ([]repo.FileEntry, error) {
+	var out []repo.FileEntry
+	for _, d := range dirs {
+		e, err := r.Lookup(ctx, root, d)
+		if errors.Is(err, repo.ErrNotExist) {
+			continue // parent of a path that doesn't exist yet
+		}
+		if err != nil {
+			return nil, err
+		}
+		if e.Mode != filemode.Dir {
+			continue
+		}
+		t, err := r.Tree(ctx, e.Hash)
+		if err != nil {
+			return nil, err
+		}
+		for _, te := range t.Entries {
+			if te.Mode == filemode.Dir || te.Mode == filemode.Submodule {
+				continue
+			}
+			p := path.Join(d, te.Name)
+			if skip == nil || !skip(p) {
+				out = append(out, repo.FileEntry{Path: p, Mode: te.Mode, Hash: te.Hash})
+			}
+		}
+	}
+	return out, nil
 }
 
 // Kind of change.
@@ -374,10 +456,11 @@ func (w *Workspace) Status() ([]FileChange, error) {
 				}
 				continue
 			}
-			if !w.inScope(rel) {
+			_, tracked := w.State.Files[rel]
+			if !w.inScope(rel) && !(tracked && w.inContext(rel)) {
 				continue
 			}
-			if _, tracked := w.State.Files[rel]; !tracked && sc.Match(p, false) {
+			if !tracked && sc.Match(p, false) {
 				continue
 			}
 			if err := check(rel); err != nil {
@@ -543,7 +626,7 @@ func (w *Workspace) applyUpstream(ctx context.Context, r *repo.Repo, from, to pl
 	var updates []update
 	var conflicts []string
 	err = r.DiffTrees(ctx, fc.TreeHash, tc.TreeHash, w.relevantDir, func(p string, _, n *repo.FileEntry) error {
-		if !w.inScope(p) {
+		if !w.inScope(p) && !w.inContext(p) {
 			return nil
 		}
 		if e, edited := edits[p]; edited {
@@ -738,6 +821,26 @@ func (w *Workspace) Add(ctx context.Context, r *repo.Repo, paths []string) (AddR
 		}
 	}
 
+	// Parent directories new to the workspace bring their own files too.
+	var newDirs []string
+	if len(res.Paths) > 0 {
+		have := map[string]bool{}
+		for _, d := range w.State.Dirs {
+			have[d] = true
+		}
+		for _, d := range ancestorDirs(res.Paths) {
+			if !have[d] {
+				newDirs = append(newDirs, d)
+			}
+		}
+		all := append(append([]string{}, w.State.Paths...), res.Paths...)
+		more, err := contextFiles(ctx, r, c.TreeHash, newDirs, func(p string) bool { return covered(all, p) })
+		if err != nil {
+			return res, err
+		}
+		files = append(files, more...)
+	}
+
 	// Out-of-scope files on disk were invisible to status; refuse to clobber
 	// one that differs from the base.
 	var clash []string
@@ -803,5 +906,36 @@ func (w *Workspace) Add(ctx context.Context, r *repo.Repo, paths []string) (AddR
 		merged = append(merged, p)
 	}
 	w.State.Paths = merged
+	if len(newDirs) > 0 {
+		w.State.Dirs = append(w.State.Dirs, newDirs...)
+		sort.Strings(w.State.Dirs)
+	}
 	return res, w.save()
+}
+
+// Rel turns a path given on the command line (relative to the current
+// directory) into a workspace path, reporting false if it is outside the
+// workspace or is neither on disk nor tracked.
+func (w *Workspace) Rel(arg string) (string, bool) {
+	abs, err := filepath.Abs(arg)
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(w.Dir, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == "." {
+		return "", true
+	}
+	if _, err := os.Lstat(abs); err == nil {
+		return rel, true
+	}
+	for p := range w.State.Files {
+		if p == rel || strings.HasPrefix(p, rel+"/") {
+			return rel, true // deleted on disk, still tracked
+		}
+	}
+	return "", false
 }

@@ -84,9 +84,9 @@ Agents without the skill can run `gion help --md`, which prints the same guide.
 | `find <remote> [<rev>] <pattern>` | Search file paths across the whole repo. A substring, or a glob (`*`, `?`, `**`, `[...]`); case-insensitive unless the pattern has uppercase. |
 | `grep <remote> [<rev>] <regex> [--path p]...` | Search file contents and print `path:line:text`. See [Search](#search). |
 | `diff <remote> [<rev>] [<rev>] [--path p]...` | What changed between two commits (`a b` or `a..b`), or what one commit changed (default `HEAD`). Prints a unified diff; `--name-only` / `--name-status` for just the paths. Only the trees and files that differ are fetched, so it's fast on any repo size. |
-| `clone <remote> <dir> [--path p]...` | Create a workspace with only the chosen paths (default: everything) at one commit. It has no history and no `.git` directory. |
+| `clone <remote> <dir> [--path p]...` | Create a workspace with only the chosen paths (default: everything) at one commit. It has no history and no `.git` directory. The files directly inside each parent directory of a path (the root's `.gitignore`, `pyproject.toml`, `go.mod`, ...) come too, so ignore rules, linters and test config work. |
 | `status` | Inside a workspace: added, modified and deleted files. Untracked files matched by `.gitignore` are skipped. |
-| `diff [--name-only \| --name-status]` | Inside a workspace: your edits as a unified diff. |
+| `diff [<path>...] [--name-only \| --name-status]` | Inside a workspace: your edits as a unified diff, optionally limited to paths. |
 | `add <path>...` | Inside a workspace: widen it with more files or directories at the workspace's commit. A path that doesn't exist yet just joins the workspace, so new files there are committed. |
 | `sync` | Inside a workspace: bring files up to date with the branch. Files you've edited are kept; if upstream changed them too, nothing is written and the conflicting paths are listed. |
 | `switch <branch>` | Inside a workspace: move to an existing branch. Only files that differ are rewritten; your edits are kept (nothing changes if they conflict). Later commits go to that branch. |

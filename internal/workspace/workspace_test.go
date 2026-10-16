@@ -121,15 +121,66 @@ func TestSparseCloneIgnoresOutOfScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Files != 1 {
-		t.Fatalf("files = %d, want 1", res.Files)
+	// d/f/g.txt, plus the files of its parents: d/e.txt and the root files.
+	if res.Files != 5 {
+		t.Fatalf("files = %d, want 5", res.Files)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "a.txt")); !os.IsNotExist(err) {
-		t.Error("a.txt materialized outside scope")
+	if got := strings.Join(w.State.Dirs, ","); got != ",d" {
+		t.Errorf("dirs = %q, want root and d", got)
 	}
+	// New files outside the paths, even next to fetched config, are not ours.
 	os.WriteFile(filepath.Join(dir, "stray.txt"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, "d", "stray.txt"), []byte("x"), 0o644)
 	if cs, _ := w.Status(); len(cs) != 0 {
 		t.Fatalf("out-of-scope files reported: %v", kinds(cs))
+	}
+	// Edits to fetched parent files are.
+	write(t, dir, "a.txt", "edited\n")
+	if got := kinds(mustStatus(t, w)); len(got) != 1 || got["a.txt"] != Modified {
+		t.Fatalf("status = %v, want a.txt modified", got)
+	}
+}
+
+// TestSparseCloneHonorsRootGitignore is the bug from the field: a sparse
+// clone didn't fetch the root .gitignore, so ignored build output got pushed.
+func TestSparseCloneHonorsRootGitignore(t *testing.T) {
+	remote, clone := testgit.Serve(t)
+	pushUpstream(t, clone, "main", map[string]string{".gitignore": "__pycache__/\n*.pyc\n", "d/f/pyproject.toml": "[tool]\n"})
+	r := openRepo(t, remote)
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(ctx, r, dir, "main", []string{"d/f/src"}) // doesn't exist yet
+	if err != nil && !errors.Is(err, repo.ErrNotExist) {
+		t.Fatal(err)
+	}
+	if err == nil {
+		t.Fatal("cloning a missing path should fail")
+	}
+	w, _, err = Clone(ctx, r, filepath.Join(t.TempDir(), "ws"), "main", []string{"d/f"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir = w.Dir
+	if read(t, dir, ".gitignore") == "" || read(t, dir, "d/f/pyproject.toml") == "" {
+		t.Fatal("config files missing")
+	}
+	write(t, dir, "d/f/__pycache__/m.cpython-312.pyc", "x")
+	write(t, dir, "d/f/m.py", "print(1)\n")
+	if got := kinds(mustStatus(t, w)); len(got) != 1 || got["d/f/m.py"] != Added {
+		t.Fatalf("status = %v, want only d/f/m.py", got)
+	}
+
+	// Widening into a new subtree brings that subtree's parents' files too.
+	pushUpstream(t, clone, "main", map[string]string{"x/y/z.txt": "z\n", "x/setup.cfg": "[x]\n"})
+	w2, _, err := Clone(ctx, r, filepath.Join(t.TempDir(), "ws2"), "main", []string{"d/f"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w2.Add(ctx, r, []string{"x/y"}); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, w2.Dir, "x/setup.cfg") != "[x]\n" || read(t, w2.Dir, "x/y/z.txt") != "z\n" {
+		t.Fatal("add didn't fetch x/y and x's files")
 	}
 }
 
@@ -286,17 +337,18 @@ func TestSyncRespectsSparseScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pushUpstream(t, clone, "main", map[string]string{"a.txt": "outside\n", "d/e.txt": "inside\n"})
+	pushUpstream(t, clone, "main", map[string]string{"o/x.txt": "outside\n", "d/e.txt": "inside\n", "a.txt": "root config\n"})
 
 	res, err := w.Sync(context.Background(), r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(res.Updated, ","); got != "d/e.txt" {
-		t.Errorf("updated = %s, want only d/e.txt", got)
+	// a.txt is a root file, fetched as config for the sparse paths.
+	if got := strings.Join(res.Updated, ","); got != "a.txt,d/e.txt" {
+		t.Errorf("updated = %s, want a.txt,d/e.txt", got)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "a.txt")); !os.IsNotExist(err) {
-		t.Error("out-of-scope a.txt was written")
+	if _, err := os.Stat(filepath.Join(dir, "o")); !os.IsNotExist(err) {
+		t.Error("out-of-scope o/x.txt was written")
 	}
 }
 
@@ -421,7 +473,8 @@ func TestSwitchAndCommitToExistingBranch(t *testing.T) {
 }
 
 func TestAddWidensSparseWorkspace(t *testing.T) {
-	remote, _ := testgit.Serve(t)
+	remote, clone := testgit.Serve(t)
+	pushUpstream(t, clone, "main", map[string]string{"o/x.txt": "x\n"})
 	r := openRepo(t, remote)
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "ws")
@@ -431,28 +484,28 @@ func TestAddWidensSparseWorkspace(t *testing.T) {
 	}
 
 	// A stray out-of-scope file that differs blocks the add, untouched.
-	write(t, dir, "a.txt", "mine\n")
-	if _, err := w.Add(ctx, r, []string{"a.txt"}); !errors.Is(err, ErrLocalConflict) {
+	write(t, dir, "o/x.txt", "mine\n")
+	if _, err := w.Add(ctx, r, []string{"o"}); !errors.Is(err, ErrLocalConflict) {
 		t.Fatalf("add over a differing file: err = %v", err)
 	}
-	if read(t, dir, "a.txt") != "mine\n" {
+	if read(t, dir, "o/x.txt") != "mine\n" {
 		t.Fatal("add overwrote a local file")
 	}
-	os.Remove(filepath.Join(dir, "a.txt"))
+	os.RemoveAll(filepath.Join(dir, "o"))
 	write(t, dir, "d/f/g.txt", "edited\n") // in scope already: must survive widening
 
-	res, err := w.Add(ctx, r, []string{"d", "a.txt", "newdir"})
+	res, err := w.Add(ctx, r, []string{"d", "o", "newdir"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Files != 2 { // d/e.txt and a.txt; d/f/g.txt was already tracked
-		t.Errorf("files = %d, want 2 (%+v)", res.Files, res)
+	if res.Files != 1 { // o/x.txt; d/e.txt came with the clone as a parent file
+		t.Errorf("files = %d, want 1 (%+v)", res.Files, res)
 	}
 	if len(res.New) != 1 || res.New[0] != "newdir" {
 		t.Errorf("new = %v", res.New)
 	}
-	if got := strings.Join(w.State.Paths, ","); got != "a.txt,d,newdir" {
-		t.Errorf("paths = %s, want a.txt,d,newdir (d/f folded into d)", got)
+	if got := strings.Join(w.State.Paths, ","); got != "d,newdir,o" {
+		t.Errorf("paths = %s, want d,newdir,o (d/f folded into d)", got)
 	}
 	if read(t, dir, "d/e.txt") != "e\n" {
 		t.Error("d/e.txt not written")
@@ -485,7 +538,7 @@ func TestAddWidensSparseWorkspace(t *testing.T) {
 
 	// The state persists.
 	w2, err := Find(dir)
-	if err != nil || strings.Join(w2.State.Paths, ",") != "a.txt,d,newdir" {
+	if err != nil || strings.Join(w2.State.Paths, ",") != "d,newdir,o" {
 		t.Fatalf("reloaded paths = %v (%v)", w2.State.Paths, err)
 	}
 }

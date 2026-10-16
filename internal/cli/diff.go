@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/go-git/go-git/v6/plumbing"
@@ -32,17 +33,43 @@ func diff(ctx context.Context, args []string) error {
 	}
 	out := diffOut{nameOnly: *nameOnly, nameStatus: *nameStatus, context: *unified, md: *md}
 
-	if len(pos) == 0 {
+	// Inside a workspace, arguments that are local paths limit the diff of
+	// your edits (like `git diff <path>`); otherwise the first is a remote.
+	var w *workspace.Workspace
+	var filter []string
+	if found, err := workspace.Find("."); err == nil {
+		local := true
+		for _, a := range append(append([]string{}, pos...), paths...) {
+			rel, ok := found.Rel(a)
+			if !ok {
+				local = false
+				break
+			}
+			filter = append(filter, rel)
+		}
+		if local {
+			w = found
+		}
+	}
+	if len(pos) == 0 && w == nil {
 		if len(paths) > 0 {
-			return errors.New("--path is for remote mode; a workspace diff covers its own paths")
+			return errors.New("--path needs a remote, or a workspace to diff")
 		}
-		w, err := workspace.Find(".")
-		if err != nil {
-			return fmt.Errorf("%w\nusage: %s diff <remote> <rev> [<rev>] (or no args inside a workspace)", err, prog)
-		}
+		return fmt.Errorf("not in a gion workspace\nusage: %s diff <remote> <rev> [<rev>] (or `%s diff [<path>...]` inside a workspace)", prog, prog)
+	}
+	if w != nil {
 		ds, content, err := w.Diff()
 		if err != nil {
 			return err
+		}
+		if keep := scopeKeep(filter); keep != nil && !slices.Contains(filter, "") {
+			kept := ds[:0]
+			for _, d := range ds {
+				if keep(d.Path) {
+					kept = append(kept, d)
+				}
+			}
+			ds = kept
 		}
 		r, err := repo.Open(w.State.Remote)
 		if err != nil {
