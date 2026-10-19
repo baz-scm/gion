@@ -331,6 +331,7 @@ func (r *Repo) Range(ctx context.Context, upstream, tip plumbing.Hash) (only []*
 	}
 	var order []plumbing.Hash
 	done := map[plumbing.Hash]int{}
+	parents := map[plumbing.Hash][]plumbing.Hash{} // of popped commits
 	for q.Len() > 0 && !stale() {
 		c := heap.Pop(q).(*object.Commit)
 		f := flags[c.Hash]
@@ -344,6 +345,7 @@ func (r *Repo) Range(ctx context.Context, upstream, tip plumbing.Hash) (only []*
 		if f == fromTip|fromUp && base.IsZero() {
 			base = c.Hash
 		}
+		parents[c.Hash] = c.ParentHashes
 		for _, ph := range c.ParentHashes {
 			if err := push(ph, f); err != nil {
 				return nil, base, err
@@ -352,6 +354,23 @@ func (r *Repo) Range(ctx context.Context, upstream, tip plumbing.Hash) (only []*
 	}
 	if base.IsZero() && q.Len() > 0 {
 		base = heap.Pop(q).(*object.Commit).Hash
+	}
+	// With equal (or skewed) commit dates, an ancestor can be popped before
+	// the commit that makes it reachable from both sides, and the walk may
+	// stop before that flag reaches it. Spread it through what was walked.
+	for changed := true; changed; {
+		changed = false
+		for h, ps := range parents {
+			if flags[h] != fromTip|fromUp {
+				continue
+			}
+			for _, p := range ps {
+				if _, walked := parents[p]; walked && flags[p] != fromTip|fromUp {
+					flags[p] = fromTip | fromUp
+					changed = true
+				}
+			}
+		}
 	}
 	for i := len(order) - 1; i >= 0; i-- {
 		if flags[order[i]] == fromTip {

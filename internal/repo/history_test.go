@@ -195,3 +195,33 @@ func TestStatsMatchGitNumstat(t *testing.T) {
 		t.Fatalf("stats:\n%s\ngit --numstat:\n%s", strings.Join(got, "\n"), want)
 	}
 }
+
+// TestRangeEqualDates: commits made in the same second leave the date queue
+// to break ties arbitrarily; a branch that main already contains must still
+// have nothing of its own.
+func TestRangeEqualDates(t *testing.T) {
+	remote, clone := testgit.Serve(t)
+	t.Setenv("GIT_AUTHOR_DATE", "2026-01-01T00:00:00Z")
+	t.Setenv("GIT_COMMITTER_DATE", "2026-01-01T00:00:00Z")
+	r := openTest(t, remote)
+	for i := range 8 {
+		feat, main := fmt.Sprintf("feat%d", i), fmt.Sprintf("main%d", i)
+		testgit.Run(t, clone, "checkout", "-q", "-B", feat, "origin/main")
+		os.WriteFile(filepath.Join(clone, "a.txt"), []byte(feat+"\n"), 0o644)
+		testgit.Run(t, clone, "commit", "-qam", feat)
+		testgit.Run(t, clone, "checkout", "-q", "-B", main)
+		os.WriteFile(filepath.Join(clone, "b.txt"), []byte(main+"\n"), 0o644)
+		testgit.Run(t, clone, "commit", "-qam", main)
+		testgit.Run(t, clone, "push", "-q", "origin", feat, main)
+
+		f := plumbing.NewHash(testgit.Run(t, clone, "rev-parse", feat))
+		m := plumbing.NewHash(testgit.Run(t, clone, "rev-parse", main))
+		only, base, err := r.Range(context.Background(), m, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(only) != 0 || base != f {
+			t.Errorf("%s: only %d commit(s), base %s; want none, base %s", feat, len(only), base, f)
+		}
+	}
+}
