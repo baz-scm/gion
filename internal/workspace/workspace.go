@@ -1,6 +1,7 @@
 // Package workspace is a light working directory: the files for chosen paths
-// at one commit, plus .gion/state.json. There is no .git and no history; the
-// remote branch is the only source of truth.
+// at one commit, plus .gion/state.json. There is no history; the remote branch
+// is the only source of truth. A .git mirror of the state (see writeGit) lets
+// git-based tools run.
 package workspace
 
 import (
@@ -53,6 +54,9 @@ type State struct {
 	// added with `gion add`.
 	Dirs  []string             `json:"dirs,omitempty"`
 	Files map[string]FileState `json:"files"`
+	// Git keeps a .git mirror of the workspace for git-based tools (see
+	// writeGit).
+	Git bool `json:"git,omitempty"`
 }
 
 // Workspace is an opened workspace directory.
@@ -91,7 +95,15 @@ func (w *Workspace) save() error {
 	if err := os.WriteFile(tmp, b, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(w.Dir, stateDir, "state.json"))
+	if err := os.Rename(tmp, filepath.Join(w.Dir, stateDir, "state.json")); err != nil {
+		return err
+	}
+	if w.State.Git {
+		if err := w.writeGit(); err != nil {
+			return fmt.Errorf("updating .git: %w", err)
+		}
+	}
+	return nil
 }
 
 // CloneResult summarizes a clone.
@@ -101,8 +113,9 @@ type CloneResult struct {
 	Bytes  int64
 }
 
-// Clone materializes paths (all if empty) of ref into dir.
-func Clone(ctx context.Context, r *repo.Repo, dir, ref string, paths []string) (*Workspace, CloneResult, error) {
+// Clone materializes paths (all if empty) of ref into dir. With git, dir also
+// gets a .git for git-based tools (see writeGit).
+func Clone(ctx context.Context, r *repo.Repo, dir, ref string, paths []string, git bool) (*Workspace, CloneResult, error) {
 	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
 		return nil, CloneResult{}, fmt.Errorf("%s exists and is not empty", dir)
 	}
@@ -183,7 +196,7 @@ func Clone(ctx context.Context, r *repo.Repo, dir, ref string, paths []string) (
 	}
 	w := &Workspace{Dir: dir, State: State{
 		Remote: r.Remote, Ref: ref, Base: commit.String(), Paths: clean, Dirs: dirs,
-		Files: make(map[string]FileState, len(files)),
+		Files: make(map[string]FileState, len(files)), Git: git,
 	}}
 	res := CloneResult{Commit: commit}
 	for _, f := range files {

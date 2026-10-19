@@ -1,6 +1,6 @@
 # Workspaces
 
-A workspace is a directory with the files you chose at one commit, plus `.gion/state.json`. There is no `.git` and no history; the remote branch is the only source of truth.
+A workspace is a directory with the files you chose at one commit, plus `.gion/state.json`. There is no history, and the remote branch is the only source of truth. A small `.git` lets git-based tools work ([below](#pre-commit-and-other-git-based-tools)).
 
 ```sh
 gion clone baz-scm/baz ./baz --path services/api --path libs/auth
@@ -48,6 +48,23 @@ Identity comes from git's usual variables (`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`
 ## Keeping up with upstream
 
 `gion sync` brings unedited files up to date with the branch. Files you've edited are kept; if upstream changed them too, nothing is written and the conflicting paths are listed. To replay your commits onto a newer base, use [`gion rebase`](branches.md#rebase).
+
+## pre-commit and other git-based tools
+
+Tools like [pre-commit](https://pre-commit.com), `git diff` and `git ls-files` need a `.git`, so every workspace has one, which gion keeps in step on `add`, `sync`, `switch`, `commit` and `rebase` (`gion clone --no-git` leaves it out):
+
+```sh
+gion clone baz-scm/baz ./baz --path services/api
+cd baz
+pre-commit install                  # or husky / lefthook, as the repo sets up
+$EDITOR services/api/handler.py
+gion commit -m "fix handler" --branch my-fix   # runs the hooks, then pushes
+pre-commit run --all-files          # check every workspace file, any time
+```
+
+That `.git` is a local snapshot, not a clone: `HEAD` is a single commit with no history whose tree holds exactly the workspace's files, on a branch named after the one you push to. In a sparse workspace the rest of the repo is simply absent, so `git status` stays quiet about it. A local `git commit` goes nowhere; push with `gion commit`.
+
+`gion commit` runs the `pre-commit` and `commit-msg` hooks (from `.git/hooks`, or `core.hooksPath` as husky sets it) the way `git commit -a` does: every change is staged first, so hooks that check staged files see all of them. If a hook fails, nothing is pushed; hooks that fix files (formatters) leave the fixes on disk, so commit again. `--no-verify` skips them.
 
 ## Running tests
 

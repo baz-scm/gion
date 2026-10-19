@@ -22,7 +22,7 @@ gion keeps only what a task needs and fetches files, trees and commits from the 
 gion cat chromium/chromium HEAD:base/strings/string_util.h   # one file from a 66 GB repo, ~1 s
 gion grep chromium/chromium 'TrimWhitespaceASCII\('             # search all 510k files
 gion log chromium/chromium --path base/strings -n 5             # history, no clone
-gion clone baz-scm/baz ./baz --path demos                     # sparse workspace, no .git
+gion clone baz-scm/baz ./baz --path demos                     # sparse workspace, no history
 cd baz && $EDITOR demos/x.md && gion commit -m "edit" --branch my-fix
 ```
 

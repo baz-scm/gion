@@ -17,9 +17,11 @@ commands:
           search file contents: scans locally when the candidate files are
           few (--max-files, default 5000), else asks GitHub code search for
           candidates and verifies them locally
-  clone   <remote> <dir> [--ref r] [--path p]...
+  clone   <remote> <dir> [--ref r] [--path p]... [--no-git]
           light workspace: only the chosen paths (default all) at one
-          commit, no history, no .git. Then, inside it:
+          commit, no history. it has a local .git that gion keeps in step,
+          so pre-commit, git diff and git status work (--no-git: none).
+          Then, inside it:
   status                               changed files vs. the clone
                                        (honors .gitignore)
   diff    [<path>...] [--stat|--name-only|--name-status]
@@ -35,10 +37,12 @@ commands:
                                        haven't edited; stops on conflicts
   switch  <branch>                     move the workspace to an existing branch;
                                        keeps your edits, commits go there
-  commit  -m <msg> [--branch b | --to b]
+  commit  -m <msg> [--branch b | --to b] [--no-verify]
                                        push workspace changes. default: first
                                        commit creates a branch, later ones
-                                       update it. --to b pushes onto existing b
+                                       update it. --to b pushes onto existing b.
+                                       runs pre-commit and commit-msg
+                                       hooks first
   commit  <remote> -m <msg> <path>=<local>... [--rm <path>]...
           [--branch <name> [--onto <rev> | --orphan] | --to <branch>]
           build a commit from the changes and push it; no checkout needed.
@@ -97,6 +101,7 @@ flags: --md  markdown output for agents
 
 ```text
   --md                   markdown output
+  --no-git               write no .git (by default gion keeps one in step for pre-commit, git diff and other git-based tools)
   --path value           path to include (repeatable; default whole repo)
   --ref string           rev to clone (default HEAD)
 ```
@@ -107,6 +112,7 @@ flags: --md  markdown output for agents
   --branch string        new branch to create (default gion/<timestamp>)
   -m string              commit message (required)
   --md                   markdown output
+  --no-verify            skip the pre-commit and commit-msg hooks
   --onto string          base rev for a new branch (default HEAD)
   --orphan               make a root commit with no parent (e.g. in an empty repo)
   --rm value             path to delete (repeatable)

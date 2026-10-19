@@ -40,7 +40,7 @@ func TestCloneEditCommit(t *testing.T) {
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "ws")
 
-	w, res, err := Clone(ctx, r, dir, "main", nil)
+	w, res, err := Clone(ctx, r, dir, "main", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestSparseCloneIgnoresOutOfScope(t *testing.T) {
 	r := openRepo(t, remote)
 	dir := filepath.Join(t.TempDir(), "ws")
 
-	w, res, err := Clone(context.Background(), r, dir, "main", []string{"d/f"})
+	w, res, err := Clone(context.Background(), r, dir, "main", []string{"d/f"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,14 +149,14 @@ func TestSparseCloneHonorsRootGitignore(t *testing.T) {
 	r := openRepo(t, remote)
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "ws")
-	w, _, err := Clone(ctx, r, dir, "main", []string{"d/f/src"}) // doesn't exist yet
+	w, _, err := Clone(ctx, r, dir, "main", []string{"d/f/src"}, false) // doesn't exist yet
 	if err != nil && !errors.Is(err, repo.ErrNotExist) {
 		t.Fatal(err)
 	}
 	if err == nil {
 		t.Fatal("cloning a missing path should fail")
 	}
-	w, _, err = Clone(ctx, r, filepath.Join(t.TempDir(), "ws"), "main", []string{"d/f"})
+	w, _, err = Clone(ctx, r, filepath.Join(t.TempDir(), "ws"), "main", []string{"d/f"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestSparseCloneHonorsRootGitignore(t *testing.T) {
 
 	// Widening into a new subtree brings that subtree's parents' files too.
 	pushUpstream(t, clone, "main", map[string]string{"x/y/z.txt": "z\n", "x/setup.cfg": "[x]\n"})
-	w2, _, err := Clone(ctx, r, filepath.Join(t.TempDir(), "ws2"), "main", []string{"d/f"})
+	w2, _, err := Clone(ctx, r, filepath.Join(t.TempDir(), "ws2"), "main", []string{"d/f"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestStatusHonorsGitignore(t *testing.T) {
 	remote, _ := testgit.Serve(t)
 	r := openRepo(t, remote)
 	dir := filepath.Join(t.TempDir(), "ws")
-	w, _, err := Clone(context.Background(), r, dir, "main", nil)
+	w, _, err := Clone(context.Background(), r, dir, "main", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +261,7 @@ func TestSyncPullsUpstreamAndKeepsLocalEdits(t *testing.T) {
 	remote, clone := testgit.Serve(t)
 	r := openRepo(t, remote)
 	dir := filepath.Join(t.TempDir(), "ws")
-	w, _, err := Clone(context.Background(), r, dir, "main", nil)
+	w, _, err := Clone(context.Background(), r, dir, "main", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestSyncStopsOnConflict(t *testing.T) {
 	remote, clone := testgit.Serve(t)
 	r := openRepo(t, remote)
 	dir := filepath.Join(t.TempDir(), "ws")
-	w, _, err := Clone(context.Background(), r, dir, "main", nil)
+	w, _, err := Clone(context.Background(), r, dir, "main", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestSyncRespectsSparseScope(t *testing.T) {
 	remote, clone := testgit.Serve(t)
 	r := openRepo(t, remote)
 	dir := filepath.Join(t.TempDir(), "ws")
-	w, _, err := Clone(context.Background(), r, dir, "main", []string{"d"})
+	w, _, err := Clone(context.Background(), r, dir, "main", []string{"d"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +359,7 @@ func TestCommitPullsUpstreamOnOtherPaths(t *testing.T) {
 	r := openRepo(t, remote)
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "ws")
-	w, _, err := Clone(ctx, r, dir, "main", nil)
+	w, _, err := Clone(ctx, r, dir, "main", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +406,7 @@ func TestSwitchAndCommitToExistingBranch(t *testing.T) {
 	testgit.Run(t, clone, "push", "-q", "origin", "feature")
 
 	dir := filepath.Join(t.TempDir(), "ws")
-	w, _, err := Clone(ctx, r, dir, "main", nil)
+	w, _, err := Clone(ctx, r, dir, "main", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +478,7 @@ func TestAddWidensSparseWorkspace(t *testing.T) {
 	r := openRepo(t, remote)
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "ws")
-	w, _, err := Clone(ctx, r, dir, "main", []string{"d/f"})
+	w, _, err := Clone(ctx, r, dir, "main", []string{"d/f"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

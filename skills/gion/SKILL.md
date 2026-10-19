@@ -5,7 +5,7 @@ description: Read, search, diff and push to remote git repositories (GitHub owne
 
 # gion: work with git repos without cloning them
 
-gion reads files, trees and commits from the remote on demand and pushes commits straight to it. There is no `.git` and no history on disk. Prefer it over `git clone` for any repo you don't already have checked out. If the repo is already checked out locally and up to date, just use that checkout and git.
+gion reads files, trees and commits from the remote on demand and pushes commits straight to it. There is no history on disk; a workspace has a small local `.git` so git-based tools work. Prefer it over `git clone` for any repo you don't already have checked out. If the repo is already checked out locally and up to date, just use that checkout and git.
 
 Add `--md` to every command: output is Markdown made for agents.
 
@@ -59,6 +59,8 @@ gion switch other-branch --md    # move to an existing branch, keeping edits
 gion log --md                    # history of what's checked out; gion blame <file> --md
 gion rebase --md                 # replay your branch onto the default branch and push it
 ```
+
+**pre-commit and git-based checks.** A workspace has a local `.git` snapshot that gion keeps in step, so `git diff`, `git status` and pre-commit work. If the repo has a `.pre-commit-config.yaml`, run `pre-commit install` once; then `gion commit` runs the hooks on all your changes before pushing, and pushes nothing if they fail (formatters leave their fixes on disk; commit again). `pre-commit run --all-files` checks everything. Push with `gion commit`, never `git commit` / `git push`.
 
 **Rebase conflicts.** `gion rebase` stops on a conflict and lists the files. Each has markers: `<<<<<<< <new base>` (upstream's version), `||||||| base` (before either change), `=======`, then `>>>>>>> <commit>` (your change). Edit the file to the final content, keeping both intents where they don't contradict (or delete the file to accept a deletion), check with `gion diff --md`, then `gion rebase --continue --md`. `--skip` drops that commit; `--abort` restores everything. Nothing is pushed until it finishes, and the push is compare-and-swap. Without a workspace, `gion rebase owner/repo my-branch --md` works when there are no conflicts.
 

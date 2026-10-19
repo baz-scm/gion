@@ -32,9 +32,11 @@ commands:
           search file contents: scans locally when the candidate files are
           few (--max-files, default 5000), else asks GitHub code search for
           candidates and verifies them locally
-  clone   <remote> <dir> [--ref r] [--path p]...
+  clone   <remote> <dir> [--ref r] [--path p]... [--no-git]
           light workspace: only the chosen paths (default all) at one
-          commit, no history, no .git. Then, inside it:
+          commit, no history. it has a local .git that gion keeps in step,
+          so pre-commit, git diff and git status work (--no-git: none).
+          Then, inside it:
   status                               changed files vs. the clone
                                        (honors .gitignore)
   diff    [<path>...] [--stat|--name-only|--name-status]
@@ -50,10 +52,12 @@ commands:
                                        haven't edited; stops on conflicts
   switch  <branch>                     move the workspace to an existing branch;
                                        keeps your edits, commits go there
-  commit  -m <msg> [--branch b | --to b]
+  commit  -m <msg> [--branch b | --to b] [--no-verify]
                                        push workspace changes. default: first
                                        commit creates a branch, later ones
-                                       update it. --to b pushes onto existing b
+                                       update it. --to b pushes onto existing b.
+                                       runs pre-commit and commit-msg
+                                       hooks first
   commit  <remote> -m <msg> <path>=<local>... [--rm <path>]...
           [--branch <name> [--onto <rev> | --orphan] | --to <branch>]
           build a commit from the changes and push it; no checkout needed.
@@ -345,6 +349,7 @@ func commit(ctx context.Context, args []string) error {
 	branch := fs.String("branch", "", "new branch to create (default gion/<timestamp>)")
 	to := fs.String("to", "", "existing branch to update with compare-and-swap")
 	orphan := fs.Bool("orphan", false, "make a root commit with no parent (e.g. in an empty repo)")
+	noVerify := fs.Bool("no-verify", false, "skip the pre-commit and commit-msg hooks")
 	md := fs.Bool("md", false, "markdown output")
 	var rms multiFlag
 	fs.Var(&rms, "rm", "path to delete (repeatable)")
@@ -355,11 +360,14 @@ func commit(ctx context.Context, args []string) error {
 	if *msg == "" {
 		return fmt.Errorf("usage: %s commit [<remote>] -m <msg> [<path>=<local>...] [--rm <path>]...", prog)
 	}
+	if *noVerify && len(pos) > 0 {
+		return errors.New("--no-verify is for workspaces; remote mode runs no hooks")
+	}
 	if len(pos) == 0 {
 		if len(rms) > 0 || *onto != "HEAD" || *orphan {
 			return errors.New("--rm, --onto and --orphan are for remote mode; in a workspace just edit files")
 		}
-		return workspaceCommit(ctx, *msg, *branch, *to, *md)
+		return workspaceCommit(ctx, *msg, *branch, *to, *noVerify, *md)
 	}
 	if *to != "" && *branch != "" {
 		return errors.New("--to and --branch are exclusive")
@@ -448,6 +456,7 @@ func compareURL(remote, branch string) string {
 func clone(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("clone", flag.ContinueOnError)
 	ref := fs.String("ref", "HEAD", "rev to clone")
+	noGit := fs.Bool("no-git", false, "write no .git (by default gion keeps one in step for pre-commit, git diff and other git-based tools)")
 	md := fs.Bool("md", false, "markdown output")
 	var paths multiFlag
 	fs.Var(&paths, "path", "path to include (repeatable; default whole repo)")
@@ -456,7 +465,7 @@ func clone(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(pos) != 2 {
-		return fmt.Errorf("usage: %s clone <remote> <dir> [--ref r] [--path p]...", prog)
+		return fmt.Errorf("usage: %s clone <remote> <dir> [--ref r] [--path p]... [--no-git]", prog)
 	}
 	r, err := repo.Open(pos[0])
 	if err != nil {
@@ -465,7 +474,7 @@ func clone(ctx context.Context, args []string) error {
 	defer r.Close()
 
 	start := time.Now()
-	_, res, err := workspace.Clone(ctx, r, pos[1], *ref, paths)
+	_, res, err := workspace.Clone(ctx, r, pos[1], *ref, paths, !*noGit)
 	if err != nil {
 		return err
 	}
@@ -478,7 +487,11 @@ func clone(ctx context.Context, args []string) error {
 		fmt.Printf("## Cloned `%s` into `%s`\n\n", pos[0], pos[1])
 		fmt.Printf("- Commit: `%s` (%s)\n- Scope: %s\n", res.Commit, *ref, scope)
 		fmt.Printf("- %d files, %s, %s\n", res.Files, humanBytes(res.Bytes), elapsed)
-		fmt.Printf("- No history and no `.git`: use `%s status` and `%s commit` inside it.\n", prog, prog)
+		if !*noGit {
+			fmt.Printf("- No history. The `.git` is a local snapshot for git-based tools (pre-commit, `git diff`); push with `%s commit`, not `git commit`.\n", prog)
+		} else {
+			fmt.Printf("- No history and no `.git`: use `%s status` and `%s commit` inside it.\n", prog, prog)
+		}
 		return nil
 	}
 	fmt.Printf("cloned %s@%s into %s: %d files, %s (%s) in %s\n", pos[0], res.Commit.String()[:12], pos[1], res.Files, humanBytes(res.Bytes), scope, elapsed)
@@ -535,10 +548,16 @@ func status(ctx context.Context, args []string) error {
 	return nil
 }
 
-func workspaceCommit(ctx context.Context, msg, branch, to string, md bool) error {
+func workspaceCommit(ctx context.Context, msg, branch, to string, noVerify, md bool) error {
 	w, err := workspace.Find(".")
 	if err != nil {
 		return err
+	}
+	if !noVerify {
+		// Hook output goes to stderr, as with git, so --md stays clean.
+		if msg, err = w.RunCommitHooks(msg, os.Stderr); err != nil {
+			return fmt.Errorf("%w\nnothing was pushed; fix and commit again (hooks may have fixed files for you), or pass --no-verify", err)
+		}
 	}
 	r, err := repo.Open(w.State.Remote)
 	if err != nil {

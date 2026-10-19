@@ -21,7 +21,7 @@ func featureWorkspace(t *testing.T, paths []string, edits ...map[string]string) 
 	remote, clone := testgit.Serve(t)
 	r := openRepo(t, remote)
 	ctx := context.Background()
-	w, _, err := Clone(ctx, r, filepath.Join(t.TempDir(), "ws"), "main", paths)
+	w, _, err := Clone(ctx, r, filepath.Join(t.TempDir(), "ws"), "main", paths, false)
 	if err != nil {
 		t.Fatal(err)
 	}

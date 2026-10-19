@@ -18,7 +18,7 @@ That's git's closest equivalent, and it's what the [performance](performance.md)
 Everything that uses the git protocol does: reading, `diff`, `log`, `blame`, workspaces, commits, tags and `rebase`, against any server with protocol v2 and partial fetch. The GitHub-only parts are listed above.
 
 **Can I use git in a gion workspace?**
-No: a workspace has no `.git`. Tools that need git metadata (like GoReleaser releases or `git describe`) need a real clone.
+For local tools, yes: a workspace has a `.git` that pre-commit, `git diff`, `git status` and `git ls-files` work with (see [Workspaces](workspaces.md#pre-commit-and-other-git-based-tools)). It holds one snapshot commit and no history, so tools that need real commits or tags (like GoReleaser releases or `git describe`) need a real clone, and you push with `gion commit`, not `git push`.
 
 **Is it safe to run many gion processes at once?**
 Yes. The cache is lock-free (write a temp file, rename it), and pushes are compare-and-swap.
