@@ -3,7 +3,7 @@ name: pages
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "mkdocs.yml", ".github/workflows/pages.yml"]
+    paths: ["docs/**", "mkdocs.yml", "overrides/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,7 @@ jobs:
           paths: |
             docs
             mkdocs.yml
+            overrides
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
