@@ -641,6 +641,7 @@ func (w *Workspace) applyUpstream(ctx context.Context, r *repo.Repo, from, to pl
 	type update struct {
 		path  string
 		entry *repo.FileEntry
+		same  bool // already on disk: only the state catches up
 	}
 	var updates []update
 	var conflicts []string
@@ -652,10 +653,12 @@ func (w *Workspace) applyUpstream(ctx context.Context, r *repo.Repo, from, to pl
 			same := (n == nil && e.Kind == Deleted) || (n != nil && e.Kind != Deleted && e.OID == n.Hash && e.Mode == n.Mode)
 			if !same {
 				conflicts = append(conflicts, p)
+				return nil
 			}
-			return nil // keep the local version (identical, or a conflict)
+			updates = append(updates, update{p, n, true}) // keep the identical local version
+			return nil
 		}
-		updates = append(updates, update{p, n})
+		updates = append(updates, update{p, n, false})
 		return nil
 	})
 	if err != nil {
@@ -668,7 +671,7 @@ func (w *Workspace) applyUpstream(ctx context.Context, r *repo.Repo, from, to pl
 
 	var blobs []plumbing.Hash
 	for _, u := range updates {
-		if u.entry != nil {
+		if u.entry != nil && !u.same {
 			blobs = append(blobs, u.entry.Hash)
 		}
 	}
@@ -676,6 +679,14 @@ func (w *Workspace) applyUpstream(ctx context.Context, r *repo.Repo, from, to pl
 		return res, err
 	}
 	for _, u := range updates {
+		if u.same {
+			if u.entry == nil {
+				delete(w.State.Files, u.path)
+			} else if err := w.record(u.path, u.entry.Hash, u.entry.Mode); err != nil {
+				return res, err
+			}
+			continue
+		}
 		if u.entry == nil {
 			if err := os.Remove(w.abs(u.path)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return res, err

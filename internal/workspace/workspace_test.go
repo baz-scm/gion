@@ -329,6 +329,28 @@ func TestSyncStopsOnConflict(t *testing.T) {
 	}
 }
 
+func TestSyncAdoptsIdenticalEdits(t *testing.T) {
+	remote, clone := testgit.Serve(t)
+	r := openRepo(t, remote)
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(context.Background(), r, dir, "main", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Local edits that upstream made too (say, pushed from elsewhere) are
+	// clean after the sync.
+	write(t, dir, "a.txt", "same\n")
+	os.Remove(filepath.Join(dir, "b.txt"))
+	pushUpstream(t, clone, "main", map[string]string{"a.txt": "same\n", "b.txt": ""})
+	if _, err := w.Sync(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	if cs := mustStatus(t, w); len(cs) != 0 {
+		t.Errorf("status after sync = %v, want clean", kinds(cs))
+	}
+}
+
 func TestSyncRespectsSparseScope(t *testing.T) {
 	remote, clone := testgit.Serve(t)
 	r := openRepo(t, remote)
