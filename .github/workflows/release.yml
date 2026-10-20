@@ -42,3 +42,19 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Make this release baz-scm/gion-action's default gion. Its bump-gion
+  # workflow tests it, tags the next v1.x.y and moves v1. Runs only once
+  # GoReleaser has published binaries, and never for pre-releases
+  # (v0.3.0-rc.1). GION_ACTION_TOKEN: fine-grained PAT or app token with
+  # contents write on baz-scm/gion-action.
+  bump-action:
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GION_ACTION_TOKEN }}
+        run: |
+          gh api repos/baz-scm/gion-action/dispatches \
+            -f event_type=gion-release -f "client_payload[version]=$GITHUB_REF_NAME"

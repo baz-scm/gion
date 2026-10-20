@@ -18,8 +18,9 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      # Dogfooding: check out with the latest gion release instead of
-      # actions/checkout, so every run also tests that gion can clone.
+      # Dogfooding: check out with gion instead of actions/checkout, so every
+      # run also tests that gion can clone. gion-action installs the newest
+      # gion release (release.yml bumps its default).
       - uses: baz-scm/gion-action/checkout@v1
       - uses: actions/setup-go@v7
         with:
@@ -44,8 +45,9 @@ jobs:
     if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     steps:
-      # Dogfooding: check out with the latest gion release instead of
-      # actions/checkout, so every run also tests that gion can clone.
+      # Dogfooding: check out with gion instead of actions/checkout, so every
+      # run also tests that gion can clone. gion-action installs the newest
+      # gion release (release.yml bumps its default).
       - uses: baz-scm/gion-action/checkout@v1
       - uses: actions/setup-go@v7
         with:
