@@ -9,7 +9,9 @@ gion find chromium/chromium 'base/**/*_test.cc'  # glob: * ? ** [...]
 
 Matching is case-insensitive unless the pattern has an uppercase letter.
 
-`find` and `grep` use a **path index**: every file path at a commit, built from the folder listings alone (no file contents). The first build for a repo fetches every folder once (chromium: 45k trees, 510k paths, a 15 MB index). Later, moving to a newer commit fetches only the folders that changed, and a commit already indexed costs one ref lookup.
+`find` and `grep` use a **path index**: every file path at a commit, built from the folder listings alone (no file contents). The first build for a repo fetches every folder once (chromium: 45k trees, 510k paths, a 15 MB index). Later, moving to a newer commit fetches only the folders that changed, and a commit already indexed costs one ref lookup. Each branch or tag keeps its own index, and commits named by id share one more, so searching an old commit doesn't throw away the default branch's index.
+
+`grep --path` with a folder (`--path base/strings`, or a glob under one like `base/*/x.h`) skips the path index: gion fetches only those folders, so it's fast at any commit, even an old one.
 
 ## Contents: `grep`
 

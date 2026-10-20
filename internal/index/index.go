@@ -12,7 +12,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -48,30 +47,71 @@ const (
 	Full  = "full"
 )
 
-// file returns where remote's index lives: next to the object cache.
-func file(remote string) (string, error) {
+// file returns where remote's index for slot lives: next to the object
+// cache. The HEAD slot keeps the name it had before there were slots.
+func file(remote, slot string) (string, error) {
 	dir, err := cache.Dir()
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256([]byte(wire.RemoteURL(remote)))
+	key := wire.RemoteURL(remote)
+	if slot != headSlot {
+		key += "\x00" + slot
+	}
+	sum := sha256.Sum256([]byte(key))
 	return filepath.Join(filepath.Dir(dir), "index", hex.EncodeToString(sum[:8])+".idx.gz"), nil
 }
 
-// At returns the index of r at commit, and how it was obtained.
-func At(ctx context.Context, r *repo.Repo, commit plumbing.Hash) (*Index, string, error) {
-	path, err := file(r.Remote)
+const (
+	headSlot   = "HEAD"
+	commitSlot = "\x00commits" // can't be a ref name
+)
+
+// slot picks which cached index rev updates: one per branch or tag, so
+// searching one never throws away another's, and one shared by revs that
+// name a commit directly (ids, ~N, ^N).
+func slot(rev string) string {
+	switch {
+	case rev == "" || rev == headSlot:
+		return headSlot
+	case strings.ContainsAny(rev, "~^") || (len(rev) >= 7 && isHex(rev)):
+		return commitSlot
+	}
+	return strings.TrimPrefix(rev, "refs/heads/")
+}
+
+func isHex(s string) bool {
+	for _, c := range s {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			return false
+		}
+	}
+	return true
+}
+
+// At returns the index of r at commit, which rev resolved to, and how it
+// was obtained. A rev seen for the first time starts from HEAD's index.
+func At(ctx context.Context, r *repo.Repo, rev string, commit plumbing.Hash) (*Index, string, error) {
+	sl := slot(rev)
+	path, err := file(r.Remote, sl)
 	if err != nil {
 		return nil, "", err
 	}
 	prev, err := load(path)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		prev = nil // unreadable index: rebuild
+	if err != nil {
+		prev = nil // missing or unreadable: build anew
 	}
 	if prev != nil && prev.Commit == commit {
 		now := time.Now()
 		_ = os.Chtimes(path, now, now) // keep it from being evicted as unused
 		return prev, Hit, nil
+	}
+	if prev == nil && sl != headSlot {
+		if hp, err := file(r.Remote, headSlot); err == nil {
+			if hi, err := load(hp); err == nil {
+				prev = hi
+			}
+		}
 	}
 
 	c, err := r.Commit(ctx, commit)
@@ -92,6 +132,60 @@ func At(ctx context.Context, r *repo.Repo, commit plumbing.Hash) (*Index, string
 	}
 	idx.Commit = commit
 	return idx, how, save(path, idx)
+}
+
+// Under returns the files at commit below the given paths (directories or
+// single files; missing ones are skipped), fetching only those subtrees
+// instead of the whole repository. It reuses the cached index when that is
+// already at commit. The result is not cached.
+func Under(ctx context.Context, r *repo.Repo, rev string, commit plumbing.Hash, paths []string) (*Index, error) {
+	if path, err := file(r.Remote, slot(rev)); err == nil {
+		if prev, err := load(path); err == nil && prev.Commit == commit {
+			return prev, nil
+		}
+	}
+	c, err := r.Commit(ctx, commit)
+	if err != nil {
+		return nil, err
+	}
+	idx := &Index{Commit: commit}
+	type dir struct {
+		path string
+		hash plumbing.Hash
+	}
+	var dirs []dir
+	var trees []plumbing.Hash
+	for _, p := range paths {
+		e, err := r.Lookup(ctx, c.TreeHash, p)
+		if errors.Is(err, repo.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		switch e.Mode {
+		case filemode.Dir:
+			dirs = append(dirs, dir{strings.Trim(p, "/"), e.Hash})
+			trees = append(trees, e.Hash)
+		case filemode.Submodule:
+		default:
+			idx.Entries = append(idx.Entries, Entry{Path: strings.Trim(p, "/"), Mode: e.Mode, OID: e.Hash})
+		}
+	}
+	if err := r.EnsureTrees(ctx, trees...); err != nil {
+		return nil, err
+	}
+	for _, d := range dirs {
+		err := r.Walk(ctx, d.hash, d.path, func(f repo.FileEntry) error {
+			idx.Entries = append(idx.Entries, Entry{Path: f.Path, Mode: f.Mode, OID: f.Hash})
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	sortEntries(idx.Entries)
+	return idx, nil
 }
 
 func full(ctx context.Context, r *repo.Repo, tree plumbing.Hash) (*Index, error) {

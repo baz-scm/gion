@@ -3,6 +3,7 @@ package search
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -48,6 +49,40 @@ func CompileGlob(pattern string) (PathMatcher, error) {
 		return nil, err
 	}
 	return re.MatchString, nil
+}
+
+// LiteralDirs returns, for --path patterns as CompileGlob takes them, the
+// paths every match must lie under: each pattern up to its first segment
+// with glob characters. Paths nested in another are dropped. It returns nil
+// if any pattern could match anywhere (e.g. "*.go" or "**/x").
+func LiteralDirs(patterns []string) []string {
+	var dirs []string
+	for _, p := range patterns {
+		var lit []string
+		for _, seg := range strings.Split(strings.Trim(p, "/"), "/") {
+			if strings.ContainsAny(seg, "*?[") {
+				break
+			}
+			lit = append(lit, seg)
+		}
+		d := strings.Join(lit, "/")
+		if d == "" {
+			return nil
+		}
+		dirs = append(dirs, d)
+	}
+	sort.Strings(dirs)
+	var out []string
+outer:
+	for _, d := range dirs {
+		for _, o := range out {
+			if d == o || strings.HasPrefix(d, o+"/") {
+				continue outer
+			}
+		}
+		out = append(out, d)
+	}
+	return out
 }
 
 func globRegexp(glob string, fold bool) (*regexp.Regexp, error) {

@@ -24,7 +24,7 @@ func openIndex(ctx context.Context, remote, rev string) (*repo.Repo, *index.Inde
 		r.Close()
 		return nil, nil, "", err
 	}
-	idx, how, err := index.At(ctx, r, commit)
+	idx, how, err := index.At(ctx, r, rev, commit)
 	if err != nil {
 		r.Close()
 		return nil, nil, "", err
@@ -128,11 +128,26 @@ func grep(ctx context.Context, args []string) error {
 	}
 
 	start := time.Now()
-	r, idx, _, err := openIndex(ctx, remote, rev)
+	var idx *index.Index
+	r, err := repo.Open(remote)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
+	commit, err := r.Resolve(ctx, rev)
+	if err != nil {
+		return err
+	}
+	// Paths under known directories need only those subtrees, not an index
+	// of the whole repository.
+	if dirs := search.LiteralDirs(paths); dirs != nil {
+		idx, err = index.Under(ctx, r, rev, commit, dirs)
+	} else {
+		idx, _, err = index.At(ctx, r, rev, commit)
+	}
+	if err != nil {
+		return err
+	}
 	res, err := search.Grep(ctx, r, idx, opts)
 	if err != nil {
 		return err

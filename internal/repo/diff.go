@@ -12,13 +12,44 @@ import (
 // DiffTrees reports every file that differs between trees a and b (either
 // may be zero, meaning empty). Subtrees with equal ids are skipped without
 // being read, and the subtrees that do differ are fetched one batch per
-// level, so the cost follows the size of the change, not of the repo.
+// level, so the cost follows the size of the change, not of the repo, and
+// the round trips follow the depth of the tree.
 //
 // descend decides whether a directory is worth entering (e.g. a sparse
 // scope); nil means always. fn gets nil for a side where the file is absent.
-// Submodules are ignored.
+// A directory's files are reported before anything below it. Submodules are
+// ignored.
 func (r *Repo) DiffTrees(ctx context.Context, a, b plumbing.Hash, descend func(dir string) bool, fn func(p string, old, new *FileEntry) error) error {
-	return r.diffDir(ctx, "", a, b, descend, fn)
+	level := []treePair{{"", a, b}}
+	for len(level) > 0 {
+		var want []plumbing.Hash
+		for _, s := range level {
+			for _, h := range []plumbing.Hash{s.a, s.b} {
+				if !h.IsZero() {
+					want = append(want, h)
+				}
+			}
+		}
+		if err := r.Ensure(ctx, want...); err != nil {
+			return err
+		}
+		var next []treePair
+		for _, s := range level {
+			subs, err := r.diffDir(ctx, s, descend, fn)
+			if err != nil {
+				return err
+			}
+			next = append(next, subs...)
+		}
+		level = next
+	}
+	return nil
+}
+
+// treePair is one directory on both sides of a diff.
+type treePair struct {
+	p    string
+	a, b plumbing.Hash
 }
 
 func (r *Repo) entries(ctx context.Context, h plumbing.Hash) (map[string]object.TreeEntry, error) {
@@ -38,17 +69,19 @@ func (r *Repo) entries(ctx context.Context, h plumbing.Hash) (map[string]object.
 	return m, nil
 }
 
-func (r *Repo) diffDir(ctx context.Context, dir string, a, b plumbing.Hash, descend func(string) bool, fn func(string, *FileEntry, *FileEntry) error) error {
-	if a == b {
-		return nil
+// diffDir reports the files that differ directly in one directory, and
+// returns the subdirectories that differ, for the next level.
+func (r *Repo) diffDir(ctx context.Context, d treePair, descend func(string) bool, fn func(string, *FileEntry, *FileEntry) error) ([]treePair, error) {
+	if d.a == d.b {
+		return nil, nil
 	}
-	ea, err := r.entries(ctx, a)
+	ea, err := r.entries(ctx, d.a)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	eb, err := r.entries(ctx, b)
+	eb, err := r.entries(ctx, d.b)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	names := map[string]bool{}
@@ -59,20 +92,14 @@ func (r *Repo) diffDir(ctx context.Context, dir string, a, b plumbing.Hash, desc
 		names[n] = true
 	}
 
-	// Collect subtrees to enter, then fetch them all in one request.
-	type sub struct {
-		p    string
-		a, b plumbing.Hash
-	}
-	var subs []sub
-	var prefetch []plumbing.Hash
+	var subs []treePair
 	for n := range names {
 		x, inA := ea[n]
 		y, inB := eb[n]
 		if inA && inB && x.Hash == y.Hash && x.Mode == y.Mode {
 			continue
 		}
-		p := path.Join(dir, n)
+		p := path.Join(d.p, n)
 		var ta, tb plumbing.Hash
 		if inA && x.Mode == filemode.Dir {
 			ta = x.Hash
@@ -81,12 +108,7 @@ func (r *Repo) diffDir(ctx context.Context, dir string, a, b plumbing.Hash, desc
 			tb = y.Hash
 		}
 		if (!ta.IsZero() || !tb.IsZero()) && (descend == nil || descend(p)) {
-			subs = append(subs, sub{p, ta, tb})
-			for _, h := range []plumbing.Hash{ta, tb} {
-				if !h.IsZero() {
-					prefetch = append(prefetch, h)
-				}
-			}
+			subs = append(subs, treePair{p, ta, tb})
 		}
 		// Files on either side (including a file replaced by a directory or
 		// the reverse) are reported directly.
@@ -99,17 +121,9 @@ func (r *Repo) diffDir(ctx context.Context, dir string, a, b plumbing.Hash, desc
 		}
 		if fa != nil || fb != nil {
 			if err := fn(p, fa, fb); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
-	if err := r.Ensure(ctx, prefetch...); err != nil {
-		return err
-	}
-	for _, s := range subs {
-		if err := r.diffDir(ctx, s.p, s.a, s.b, descend, fn); err != nil {
-			return err
-		}
-	}
-	return nil
+	return subs, nil
 }

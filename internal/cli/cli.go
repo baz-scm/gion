@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/go-git/go-git/v6/plumbing/filemode"
@@ -99,7 +100,7 @@ var prog = "gion"
 func Main(invokedAs string, args []string) int {
 	prog = invokedAs
 	usage := fmt.Sprintf(usageText, prog)
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	if len(args) < 1 {

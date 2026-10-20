@@ -59,3 +59,19 @@ func TestLongestLiteral(t *testing.T) {
 		}
 	}
 }
+
+func TestLiteralDirs(t *testing.T) {
+	got := LiteralDirs([]string{"base/strings/", "base/*/x.h", "a-c", "base/strings/y", "a/b/**/*.go"})
+	want := []string{"a-c", "a/b", "base"}
+	if len(got) != len(want) {
+		t.Fatalf("LiteralDirs = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("LiteralDirs = %v, want %v", got, want)
+		}
+	}
+	if d := LiteralDirs([]string{"base", "*.go"}); d != nil {
+		t.Errorf("unanchored glob: %v, want nil", d)
+	}
+}
