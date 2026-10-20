@@ -35,11 +35,60 @@ func GitHubRepo(remote string) (string, bool) {
 	return "", false
 }
 
+// ErrRateLimited means GitHub refused a request for exceeding a rate limit.
+// Code search allows about 10 requests a minute per user.
+type ErrRateLimited struct {
+	Status  int
+	Message string
+	Retry   time.Duration // how long until GitHub accepts requests again; 0 if unknown
+}
+
+func (e *ErrRateLimited) Error() string {
+	msg := fmt.Sprintf("GitHub code search rate limit hit (HTTP %d", e.Status)
+	if e.Message != "" {
+		msg += ": " + e.Message
+	}
+	msg += ")"
+	if e.Retry > 0 {
+		msg += fmt.Sprintf("; retry in %s", e.Retry.Round(time.Second))
+	}
+	return msg
+}
+
+// rateLimited reports whether resp is GitHub refusing a request for a rate
+// limit, primary or secondary. A plain 403 (no access) is not one.
+func rateLimited(resp *http.Response, message string, now time.Time) *ErrRateLimited {
+	if resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusTooManyRequests {
+		return nil
+	}
+	e := &ErrRateLimited{Status: resp.StatusCode, Message: message}
+	if s, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil {
+		e.Retry = time.Duration(s) * time.Second
+	} else if reset, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil && resp.Header.Get("X-RateLimit-Remaining") == "0" {
+		e.Retry = time.Unix(reset, 0).Sub(now)
+	}
+	if resp.StatusCode == http.StatusTooManyRequests || e.Retry > 0 || strings.Contains(strings.ToLower(message), "rate limit") {
+		return e
+	}
+	return nil
+}
+
+// codeSearchQuery is the search query for literal in repo, limited to dir
+// (a directory path, or "" for the whole repo).
+func codeSearchQuery(literal, repo, dir string) string {
+	q := fmt.Sprintf("%q repo:%s", literal, repo)
+	if dir != "" {
+		q += " path:" + dir
+	}
+	return q
+}
+
 // CodeSearch returns paths of files on the default branch that GitHub's code
-// search says contain literal. GitHub caps results at 1000 and doesn't index
-// every file (very large files, for one), so callers treat the result as
-// candidates and verify them.
-func CodeSearch(ctx context.Context, remote, literal string) (paths []string, total int, err error) {
+// search says contain literal, under dir if it isn't "" (fewer results means
+// fewer pages, and each page counts against the rate limit). GitHub caps
+// results at 1000 and doesn't index every file (very large files, for one),
+// so callers treat the result as candidates and verify them.
+func CodeSearch(ctx context.Context, remote, literal, dir string) (paths []string, total int, err error) {
 	repo, ok := GitHubRepo(remote)
 	if !ok {
 		return nil, 0, ErrUnsupported
@@ -49,7 +98,7 @@ func CodeSearch(ctx context.Context, remote, literal string) (paths []string, to
 	if err != nil {
 		return nil, 0, err
 	}
-	q := fmt.Sprintf("%q repo:%s", literal, repo)
+	q := codeSearchQuery(literal, repo, dir)
 	seen := map[string]bool{}
 	for page := 1; page <= 10; page++ {
 		v := url.Values{"q": {q}, "per_page": {"100"}, "page": {strconv.Itoa(page)}}
@@ -72,12 +121,8 @@ func CodeSearch(ctx context.Context, remote, literal string) (paths []string, to
 		}
 		err = json.NewDecoder(resp.Body).Decode(&body)
 		resp.Body.Close()
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-			wait := ""
-			if reset, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil {
-				wait = fmt.Sprintf("; retry in %s", time.Until(time.Unix(reset, 0)).Round(time.Second))
-			}
-			return nil, 0, fmt.Errorf("github code search rate limited (%s)%s", body.Message, wait)
+		if rl := rateLimited(resp, body.Message, time.Now()); rl != nil {
+			return nil, 0, rl
 		}
 		if resp.StatusCode != http.StatusOK {
 			return nil, 0, fmt.Errorf("github code search: %s: %s", resp.Status, body.Message)

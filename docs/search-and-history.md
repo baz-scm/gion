@@ -27,6 +27,8 @@ Output is `path:line:text`. gion picks how to search:
 
 `--local` forces a full scan and `--forge` forces code search.
 
+GitHub allows about 10 code search requests a minute per user, and one grep takes 1 to 10 of them (100 results per page, up to 1000 results). A single `--path` folder is passed to the search too, so a narrower grep needs fewer pages. Agents grepping in parallel share that budget. When it runs out, grep stops and says how long to wait; meanwhile narrow with `--path` so it scans locally, use `--local`, or `gion clone` the folders you need and search them there.
+
 ## Changes: `diff`
 
 ```sh

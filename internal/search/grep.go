@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"regexp/syntax"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/filemode"
@@ -29,6 +30,7 @@ type GrepOptions struct {
 	Pattern  string
 	Fold     bool          // case-insensitive
 	Paths    []PathMatcher // any must match; none means all files
+	ForgeDir string        // a directory every path lies under, passed to code search; "" for none
 	MaxFiles int           // Auto switches to Forge above this
 	Strategy string
 }
@@ -84,9 +86,17 @@ func Grep(ctx context.Context, r *repo.Repo, idx *index.Index, o GrepOptions) (G
 		if len(lit) < 3 {
 			return res, fmt.Errorf("%d files to search, and the pattern has no literal text of 3+ characters for code search to look up; narrow with --path, or force a full scan with --local", len(cands))
 		}
-		paths, total, err := forge.CodeSearch(ctx, r.Remote, lit)
+		paths, total, err := forge.CodeSearch(ctx, r.Remote, lit, o.ForgeDir)
 		if errors.Is(err, forge.ErrUnsupported) {
 			return res, fmt.Errorf("%d files to search and %v; narrow with --path or use --local", len(cands), err)
+		}
+		var rl *forge.ErrRateLimited
+		if errors.As(err, &rl) {
+			wait := "wait a minute"
+			if rl.Retry > 0 {
+				wait = fmt.Sprintf("wait %s", rl.Retry.Round(time.Second))
+			}
+			return res, fmt.Errorf("%v\n%d files to search; GitHub allows about 10 code searches a minute. %s and rerun, narrow with --path so it scans locally, use --local to scan every file, or gion clone the folders you need and search them there", rl, len(cands), wait)
 		}
 		if err != nil {
 			return res, err

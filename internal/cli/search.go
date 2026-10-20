@@ -141,6 +141,9 @@ func grep(ctx context.Context, args []string) error {
 	// Paths under known directories need only those subtrees, not an index
 	// of the whole repository.
 	if dirs := search.LiteralDirs(paths); dirs != nil {
+		if len(dirs) == 1 {
+			opts.ForgeDir = dirs[0]
+		}
 		idx, err = index.Under(ctx, r, rev, commit, dirs)
 	} else {
 		idx, _, err = index.At(ctx, r, rev, commit)
