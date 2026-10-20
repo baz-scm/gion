@@ -1,0 +1,169 @@
+/* Baz look (https://baz.ai): cool neutrals, Baz purple, Inter / JetBrains Mono / Newsreader. */
+@import url("https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap");
+
+:root {
+  --baz-purple: #444ac2;
+  --baz-light-purple: #949feb;
+  --baz-n0: #fff;
+  --baz-n50: #f8f9fb;
+  --baz-n100: #f1f2f6;
+  --baz-n200: #e9ebf1;
+  --baz-n300: #cacedc;
+  --baz-n350: #bec2d4;
+  --baz-n500: #8d93b0;
+  --baz-n600: #646a8a;
+  --baz-n700: #454b66;
+  --baz-n800: #2f3449;
+  --baz-n850: #262a3a;
+  --baz-n900: #1d202c;
+  --baz-n925: #191c26;
+  --baz-n950: #15171f;
+  --md-text-font: "Inter";
+  --md-code-font: "JetBrains Mono";
+  --baz-serif: "Newsreader", Georgia, "Times New Roman", serif;
+}
+
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: var(--baz-n50);
+  --md-default-fg-color: var(--baz-n900);
+  --md-default-fg-color--light: var(--baz-n700);
+  --md-default-fg-color--lighter: var(--baz-n500);
+  --md-default-fg-color--lightest: var(--baz-n200);
+  --md-primary-fg-color: var(--baz-n50);
+  --md-primary-fg-color--light: var(--baz-n50);
+  --md-primary-fg-color--dark: var(--baz-n50);
+  --md-primary-bg-color: var(--baz-n900);
+  --md-primary-bg-color--light: var(--baz-n600);
+  --md-accent-fg-color: var(--baz-purple);
+  --md-accent-fg-color--transparent: #444ac21a;
+  --md-typeset-color: var(--baz-n800);
+  --md-typeset-a-color: var(--baz-purple);
+  --md-code-bg-color: var(--baz-n100);
+  --md-code-fg-color: var(--baz-n900);
+  --md-footer-bg-color: var(--baz-n100);
+  --md-footer-bg-color--dark: var(--baz-n200);
+  --md-footer-fg-color: var(--baz-n900);
+  --md-footer-fg-color--light: var(--baz-n600);
+  --md-footer-fg-color--lighter: var(--baz-n500);
+  --baz-border: var(--baz-n200);
+  --baz-surface: var(--baz-n0);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: var(--baz-n950);
+  --md-default-fg-color: var(--baz-n50);
+  --md-default-fg-color--light: var(--baz-n350);
+  --md-default-fg-color--lighter: var(--baz-n500);
+  --md-default-fg-color--lightest: var(--baz-n800);
+  --md-primary-fg-color: var(--baz-n950);
+  --md-primary-fg-color--light: var(--baz-n950);
+  --md-primary-fg-color--dark: var(--baz-n950);
+  --md-primary-bg-color: var(--baz-n50);
+  --md-primary-bg-color--light: var(--baz-n350);
+  --md-accent-fg-color: var(--baz-light-purple);
+  --md-accent-fg-color--transparent: #949feb1a;
+  --md-typeset-color: var(--baz-n200);
+  --md-typeset-a-color: var(--baz-light-purple);
+  --md-code-bg-color: var(--baz-n900);
+  --md-code-fg-color: var(--baz-n100);
+  --md-footer-bg-color: var(--baz-n925);
+  --md-footer-bg-color--dark: var(--baz-n900);
+  --md-footer-fg-color: var(--baz-n50);
+  --md-footer-fg-color--light: var(--baz-n350);
+  --md-footer-fg-color--lighter: var(--baz-n500);
+  --baz-border: var(--baz-n800);
+  --baz-surface: var(--baz-n925);
+}
+
+/* Header: page-coloured bar with a hairline, like baz.ai's nav. */
+.md-header {
+  border-bottom: 1px solid var(--baz-border);
+  box-shadow: none;
+}
+.md-header[data-md-state="shadow"],
+.md-header--shadow {
+  box-shadow: none;
+}
+.md-header__title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.md-search__form {
+  background-color: var(--baz-surface);
+  border: 1px solid var(--baz-border);
+  border-radius: 8px;
+}
+.md-search__form:hover {
+  background-color: var(--baz-surface);
+}
+.md-search__input,
+.md-search__input::placeholder,
+.md-search__icon {
+  color: var(--md-default-fg-color--light);
+}
+
+/* Type: serif page titles, tight tracking. */
+.md-typeset {
+  font-size: 0.8rem;
+  line-height: 1.65;
+}
+.md-typeset h1,
+.md-typeset h2 {
+  font-family: var(--baz-serif);
+  font-weight: 500;
+  color: var(--md-default-fg-color);
+}
+.md-typeset h1 {
+  font-size: 2.2em;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+.md-typeset h2 {
+  font-size: 1.6em;
+  letter-spacing: -0.02em;
+}
+.md-typeset h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.md-typeset a {
+  text-underline-offset: 0.2em;
+}
+.md-typeset a:hover {
+  text-decoration: underline;
+}
+
+/* Code and admonitions: soft cards with 8px radius. */
+.md-typeset pre > code,
+.md-typeset .highlight,
+.md-typeset code {
+  border-radius: 8px;
+}
+.md-typeset pre > code {
+  border: 1px solid var(--baz-border);
+}
+.md-typeset :not(pre) > code {
+  border-radius: 4px;
+}
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 8px;
+  border-width: 1px;
+  box-shadow: none;
+  font-size: 0.75rem;
+}
+.md-typeset table:not([class]) {
+  border: 1px solid var(--baz-border);
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+
+/* Sidebar: muted links, purple active item. */
+.md-nav__link--active,
+.md-nav__item .md-nav__link--active {
+  color: var(--md-accent-fg-color);
+  font-weight: 500;
+}
+.md-nav__title {
+  font-weight: 600;
+}
