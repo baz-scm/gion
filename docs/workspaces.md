@@ -35,6 +35,8 @@ gion add services/new-thing   # doesn't exist yet: it just joins the workspace
 
 ## Committing
 
+<video class="demo" src="../assets/demos/push.mp4" autoplay loop muted playsinline></video>
+
 ```sh
 gion commit -m "msg" --branch my-fix   # first commit: create the branch
 gion commit -m "more"                  # later commits update it
@@ -43,11 +45,17 @@ gion commit -m "hotfix" --to main      # push onto another existing branch
 
 The first commit creates a branch (`gion/<timestamp>` if you don't name one). Pushes are compare-and-swap: if someone pushed to the branch in the meantime and changed other files, gion builds on top of their commit and writes their files to disk too; if they changed a file you edited, it stops and lists it. See [Branches & rebase](branches.md).
 
+The pushed branch on GitHub, one commit ahead of `main`:
+
+![GitHub showing branch demo/recording one commit ahead of main, with the docs: demo edit commit](assets/demos/push-github.png)
+
 Identity comes from git's usual variables (`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_*`, `*_DATE`) or `user.name` / `user.email` in `~/.gitconfig`.
 
 ## Keeping up with upstream
 
 `gion sync` brings unedited files up to date with the branch. Files you've edited are kept; if upstream changed them too, nothing is written and the conflicting paths are listed. To replay your commits onto a newer base, use [`gion rebase`](branches.md#rebase).
+
+<video class="demo" src="../assets/demos/sync.mp4" autoplay loop muted playsinline></video>
 
 ## pre-commit and other git-based tools
 
