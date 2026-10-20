@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"errors"
 	"fmt"
@@ -27,14 +28,17 @@ import (
 // (pre-commit, `git diff`, `git ls-files`) can read. It is a mirror of the
 // workspace state, rewritten on every save. When the tracked files are the
 // whole of the cloned commit's tree, HEAD is that commit, as in a depth-1
-// clone (.git/shallow). Otherwise HEAD is a snapshot commit, with no parent,
-// whose tree holds exactly the tracked files: files outside a sparse
+// clone (.git/shallow). Otherwise git reads a snapshot commit, with no
+// parent, whose tree holds exactly the tracked files: files outside a sparse
 // workspace's paths are not in that tree, so git sees a small, complete repo
-// rather than a huge sparse one. Either way the index matches HEAD, and
-// .git/GION_HEAD names the upstream commit (`git rev-parse GION_HEAD`); it is
-// a pseudoref, not a ref under refs/, as the object may be absent and
-// `git log --all` would fail on it. Only gion pushes; a local `git commit`
-// goes nowhere.
+// rather than a huge sparse one. HEAD still names the cloned commit (so
+// `git rev-parse HEAD` gives the upstream id) and refs/replace/<that commit>
+// names the snapshot, which git reads in its place. The cloned commit sits in
+// a promisor pack, as in a partial clone, so fsck and gc accept its tree
+// being absent. Either way the index matches HEAD's tree, and .git/GION_HEAD
+// names the upstream commit (`git rev-parse GION_HEAD`); it is a pseudoref,
+// not a ref under refs/, as the object may be absent and `git log --all`
+// would fail on it. Only gion pushes; a local `git commit` goes nowhere.
 
 const gitDir = ".git"
 
@@ -93,14 +97,34 @@ func (w *Workspace) writeGit() error {
 	if err := objs.flush(); err != nil {
 		return err
 	}
-	head, upstream, err := w.gitUpstream(tree, src)
-	if err != nil {
-		return err
-	}
-	if !upstream {
-		if head, err = w.gitCommit(tree); err != nil {
+	base, c, local := w.gitBase(src)
+	upstream := c != nil && c.TreeHash == tree
+	head, replaced, snapshot := plumbing.ZeroHash, plumbing.ZeroHash, plumbing.ZeroHash
+	switch {
+	case upstream:
+		if !local {
+			if err := w.gitPut(base); err != nil {
+				return err
+			}
+		}
+		head = base.Hash()
+	default:
+		if snapshot, err = w.gitCommit(tree, c); err != nil {
 			return err
 		}
+		head = snapshot
+		if c != nil {
+			if err := objs.promise(base); err != nil {
+				return err
+			}
+			if err := w.gitPartialClone(); err != nil {
+				return err
+			}
+			head, replaced = base.Hash(), base.Hash()
+		}
+	}
+	if err := w.gitReplace(replaced, snapshot); err != nil {
+		return err
 	}
 	if err := w.gitShallow(upstream); err != nil {
 		return err
@@ -114,38 +138,108 @@ func (w *Workspace) writeGit() error {
 	return w.gitIndex(paths, nil)
 }
 
-// gitUpstream copies the cloned commit into .git and returns it when its tree
-// is tree, so HEAD can be the real commit. ok is false when the workspace
-// holds less than that tree, or the commit isn't to be had from .git or the
-// cache.
-func (w *Workspace) gitUpstream(tree plumbing.Hash, cacheDir string) (h plumbing.Hash, ok bool, err error) {
+// gitBase returns the cloned commit, from .git (local, as a loose object) or
+// the cache. c is nil when it isn't to be had.
+func (w *Workspace) gitBase(cacheDir string) (o plumbing.EncodedObject, c *object.Commit, local bool) {
 	base, isHash := plumbing.FromHex(w.State.Base)
 	if !isHash {
-		return plumbing.ZeroHash, false, nil
+		return nil, nil, false
 	}
-	o, gerr := w.gitGet(base)
-	if gerr != nil {
+	o, err := w.gitGet(base)
+	local = err == nil
+	if !local {
 		if cacheDir == "" {
-			return plumbing.ZeroHash, false, nil
+			return nil, nil, false
 		}
 		s, err := cache.Open(cacheDir)
 		if err != nil {
-			return plumbing.ZeroHash, false, nil
+			return nil, nil, false
 		}
 		if o, err = s.Get(base); err != nil {
-			return plumbing.ZeroHash, false, nil
+			return nil, nil, false
 		}
 	}
-	var c object.Commit
-	if o.Type() != plumbing.CommitObject || c.Decode(o) != nil || c.TreeHash != tree {
-		return plumbing.ZeroHash, false, nil
+	c = &object.Commit{}
+	if o.Type() != plumbing.CommitObject || c.Decode(o) != nil {
+		return nil, nil, false
 	}
-	if gerr != nil {
-		if err := w.gitPut(o); err != nil {
-			return plumbing.ZeroHash, false, err
+	return o, c, local
+}
+
+// gitReplace leaves one replace ref, from -> to, or none when from is zero.
+// gion owns refs/replace: any other ref there is one it wrote for an earlier
+// HEAD, loose or packed by `git gc`.
+func (w *Workspace) gitReplace(from, to plumbing.Hash) error {
+	dir := w.gitPath("refs", "replace")
+	es, err := os.ReadDir(dir)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	for _, e := range es {
+		if from.IsZero() || e.Name() != from.String() {
+			if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+				return err
+			}
 		}
 	}
-	return base, true, nil
+	if err := w.gitUnpackReplace(); err != nil {
+		return err
+	}
+	if from.IsZero() {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(dir, from.String()), []byte(to.String()+"\n"))
+}
+
+// gitUnpackReplace drops refs/replace/ from .git/packed-refs. A replace ref
+// points at a commit, so has no peeled line after it.
+func (w *Workspace) gitUnpackReplace() error {
+	p := w.gitPath("packed-refs")
+	b, err := os.ReadFile(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	lines := strings.SplitAfter(string(b), "\n")
+	kept := lines[:0]
+	for _, l := range lines {
+		if _, ref, _ := strings.Cut(strings.TrimSpace(l), " "); !strings.HasPrefix(ref, "refs/replace/") {
+			kept = append(kept, l)
+		}
+	}
+	if len(kept) == len(lines) {
+		return nil
+	}
+	return writeAtomic(p, []byte(strings.Join(kept, "")))
+}
+
+// gitPartialClone marks .git as a partial clone, so git accepts objects
+// missing from it that a promisor pack's objects refer to. The remote is
+// never fetched from: git only would with replace refs turned off.
+func (w *Workspace) gitPartialClone() error {
+	p := w.gitPath("config")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return err
+	}
+	cfg := format.New()
+	if err := format.NewDecoder(bytes.NewReader(b)).Decode(cfg); err != nil {
+		return fmt.Errorf(".git/config: %w", err)
+	}
+	if cfg.Section("extensions").Option("partialClone") != "" {
+		return nil
+	}
+	cfg.Section("core").SetOption("repositoryformatversion", "1")
+	cfg.Section("extensions").SetOption("partialClone", "gion")
+	var out bytes.Buffer
+	if err := format.NewEncoder(&out).Encode(cfg); err != nil {
+		return err
+	}
+	return writeAtomic(p, out.Bytes())
 }
 
 // gitShallow marks the cloned commit as having no parents in .git when HEAD
@@ -329,12 +423,17 @@ func sortTreeEntries(es []object.TreeEntry) {
 	sort.Slice(es, func(i, j int) bool { return key(es[i]) < key(es[j]) })
 }
 
-// gitCommit returns the snapshot commit for tree, reusing HEAD's when it
-// already describes the same tree and base, so HEAD only moves when the
-// workspace does.
-func (w *Workspace) gitCommit(tree plumbing.Hash) (plumbing.Hash, error) {
+// gitCommit returns the snapshot commit for tree, so HEAD only moves when the
+// workspace does. It carries the cloned commit's date when that's to be had,
+// which makes it the same commit for the same tree and base; else it reuses
+// HEAD's when that describes the same tree and base.
+func (w *Workspace) gitCommit(tree plumbing.Hash, base *object.Commit) (plumbing.Hash, error) {
 	msg := fmt.Sprintf("gion workspace of %s at %s\n\nA local snapshot of the workspace files, not a commit on the remote.\n", w.State.Remote, w.State.Base)
-	if cur, err := w.gitResolveHead(); err == nil {
+	sig := snapshotAuthor
+	sig.When = time.Now()
+	if base != nil {
+		sig.When = base.Committer.When
+	} else if cur, err := w.gitResolveHead(); err == nil {
 		if o, err := w.gitGet(cur); err == nil {
 			var c object.Commit
 			if c.Decode(o) == nil && c.TreeHash == tree && c.Message == msg {
@@ -342,8 +441,6 @@ func (w *Workspace) gitCommit(tree plumbing.Hash) (plumbing.Hash, error) {
 			}
 		}
 	}
-	sig := snapshotAuthor
-	sig.When = time.Now()
 	o := &plumbing.MemoryObject{}
 	if err := (&object.Commit{Author: sig, Committer: sig, Message: msg, TreeHash: tree}).Encode(o); err != nil {
 		return plumbing.ZeroHash, err

@@ -176,22 +176,74 @@ func TestGitHeadIsUpstream(t *testing.T) {
 	}
 	testgit.Run(t, dir, "fsck", "--strict")
 
-	// A sparse workspace keeps a snapshot HEAD; GION_HEAD names the upstream.
+	// A sparse workspace's HEAD is the upstream commit too, replaced by a
+	// snapshot of the tracked files.
 	dir = filepath.Join(t.TempDir(), "ws")
-	if _, _, err := Clone(ctx, r, dir, "main", []string{"d/f"}, true); err != nil {
+	w, _, err = Clone(ctx, r, dir, "main", []string{"d/f"}, true)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got := testgit.Run(t, dir, "rev-parse", "HEAD"); got == main {
-		t.Error("sparse HEAD is the upstream commit")
+	for _, rev := range []string{"HEAD", "GION_HEAD"} {
+		if got := testgit.Run(t, dir, "rev-parse", rev); got != main {
+			t.Errorf("%s = %s, want %s", rev, got, main)
+		}
+		if got := testgit.Run(t, dir, "rev-parse", "--short=7", rev); got != main[:7] {
+			t.Errorf("%s = %s, want %s", rev, got, main[:7])
+		}
 	}
-	if got := testgit.Run(t, dir, "rev-parse", "--short=7", "GION_HEAD"); got != main[:7] {
-		t.Errorf("GION_HEAD = %s, want %s", got, main[:7])
+	if got := testgit.Run(t, dir, "ls-tree", "-r", "--name-only", "HEAD"); strings.Contains(got, "x/y.txt") {
+		t.Errorf("HEAD tree has files outside the paths: %q", got)
+	}
+	if got := testgit.Run(t, dir, "status", "--porcelain"); got != "" {
+		t.Errorf("git status = %q", got)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".git", "shallow")); err == nil {
 		t.Error("sparse workspace has .git/shallow")
 	}
 	testgit.Run(t, dir, "log", "--all", "--oneline")
 	testgit.Run(t, dir, "fsck", "--strict")
+	snap := testgit.Run(t, dir, "rev-parse", "refs/replace/"+main)
+
+	// gc packs the refs and keeps the objects; saving puts back the same
+	// snapshot.
+	testgit.Run(t, dir, "gc", "-q")
+	testgit.Run(t, dir, "fsck", "--strict")
+	if err := w.save(); err != nil {
+		t.Fatal(err)
+	}
+	if got := testgit.Run(t, dir, "rev-parse", "HEAD", "refs/replace/"+main); got != main+"\n"+snap {
+		t.Errorf("after save: HEAD, replacement = %q", got)
+	}
+	if got := testgit.Run(t, dir, "status", "--porcelain"); got != "" {
+		t.Errorf("after gc: git status = %q", got)
+	}
+
+	// Syncing moves HEAD to the new upstream commit, with one replace ref.
+	pushUpstream(t, clone, "main", map[string]string{"d/f/g.txt": "g2\n"})
+	if _, err := w.Sync(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	main = testgit.Run(t, clone, "rev-parse", "main")
+	if got := testgit.Run(t, dir, "rev-parse", "HEAD"); got != main {
+		t.Errorf("after sync: HEAD = %s, want %s", got, main)
+	}
+	if got := testgit.Run(t, dir, "for-each-ref", "--format=%(refname)", "refs/replace/"); got != "refs/replace/"+main {
+		t.Errorf("replace refs = %q", got)
+	}
+	if got := testgit.Run(t, dir, "show", "HEAD:d/f/g.txt"); got != "g2" {
+		t.Errorf("HEAD:d/f/g.txt = %q", got)
+	}
+	if got := testgit.Run(t, dir, "status", "--porcelain"); got != "" {
+		t.Errorf("after sync: git status = %q", got)
+	}
+	testgit.Run(t, dir, "fsck", "--strict")
+
+	// A local commit's parent is the upstream commit.
+	write(t, dir, "d/f/g.txt", "g3\n")
+	testgit.Run(t, dir, "commit", "-qam", "local")
+	if got := testgit.Run(t, dir, "rev-parse", "HEAD^"); got != main {
+		t.Errorf("local commit's parent = %s, want %s", got, main)
+	}
 }
 
 func mustEval(t *testing.T, p string) string {

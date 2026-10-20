@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/go-git/go-git/v6/plumbing"
@@ -28,10 +29,12 @@ var packAbove = 64
 
 // gitObjects collects the objects .git lacks, then writes them all at once.
 type gitObjects struct {
-	w      *Workspace
-	packed map[plumbing.Hash]bool // in .git/objects/pack
-	queued map[plumbing.Hash]bool
-	queue  []pendingObject
+	w        *Workspace
+	packed   map[plumbing.Hash]bool // in .git/objects/pack
+	promised map[plumbing.Hash]bool // in a promisor pack
+	queued   map[plumbing.Hash]bool
+	queue    []pendingObject
+	promisor bool // the pack writePack writes is a promisor pack
 }
 
 // pendingObject has its content in data, or a path to read it from: a loose
@@ -45,7 +48,7 @@ type pendingObject struct {
 }
 
 func (w *Workspace) newGitObjects() (*gitObjects, error) {
-	o := &gitObjects{w: w, packed: map[plumbing.Hash]bool{}, queued: map[plumbing.Hash]bool{}}
+	o := &gitObjects{w: w, packed: map[plumbing.Hash]bool{}, promised: map[plumbing.Hash]bool{}, queued: map[plumbing.Hash]bool{}}
 	idxs, err := filepath.Glob(w.gitPath("objects", "pack", "*.idx"))
 	if err != nil {
 		return nil, err
@@ -65,6 +68,7 @@ func (w *Workspace) newGitObjects() (*gitObjects, error) {
 		if err != nil {
 			return nil, err
 		}
+		_, perr := os.Stat(strings.TrimSuffix(p, ".idx") + ".promisor")
 		for {
 			e, err := it.Next()
 			if errors.Is(err, io.EOF) {
@@ -74,6 +78,9 @@ func (w *Workspace) newGitObjects() (*gitObjects, error) {
 				return nil, err
 			}
 			o.packed[e.Hash] = true
+			if perr == nil {
+				o.promised[e.Hash] = true
+			}
 		}
 	}
 	return o, nil
@@ -162,7 +169,26 @@ func (o *gitObjects) flush() error {
 	return nil
 }
 
-// writePack writes the queue as .git/objects/pack/pack-<sum>.{pack,idx}.
+// promise writes obj to a promisor pack of its own, unless it's in one:
+// objects it refers to may then be missing from .git.
+func (o *gitObjects) promise(obj plumbing.EncodedObject) error {
+	if o.promised[obj.Hash()] {
+		return nil
+	}
+	data, err := readAll(obj)
+	if err != nil {
+		return err
+	}
+	p := &gitObjects{w: o.w, promisor: true, queue: []pendingObject{{hash: obj.Hash(), typ: obj.Type(), data: data}}}
+	if err := p.writePack(); err != nil {
+		return err
+	}
+	o.packed[obj.Hash()], o.promised[obj.Hash()] = true, true
+	return nil
+}
+
+// writePack writes the queue as .git/objects/pack/pack-<sum>.{pack,idx}, and
+// .promisor for a promisor pack.
 func (o *gitObjects) writePack() error {
 	dir := o.w.gitPath("objects", "pack")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -270,6 +296,11 @@ func (o *gitObjects) writePack() error {
 	base := filepath.Join(dir, "pack-"+checksum.String())
 	if err := os.Rename(tmp.Name(), base+".pack"); err != nil {
 		return err
+	}
+	if o.promisor {
+		if err := os.WriteFile(base+".promisor", nil, 0o644); err != nil {
+			return err
+		}
 	}
 	var ib bytes.Buffer
 	if err := idxfile.Encode(&ib, sha1.New(), idx); err != nil {
