@@ -44,3 +44,9 @@ Everything goes through [go-git](https://github.com/go-git/go-git) and gion's ow
 ## Debugging
 
 `GION_TRACE=1` logs each request's protocol lines and timings to stderr.
+
+## Background
+
+Anthropic's [Redesigning source control](https://www.anthropic.com/engineering/redesigning-source-control) describes Scion, an internal system that makes client and server deliberately unequal: the server holds the history, and the client keeps a small cache and fetches immutable objects by id. Scion replaces git to get there. gion applies the client half of that idea to existing git servers.
+
+gion is an independent project. It is not affiliated with or endorsed by Anthropic.

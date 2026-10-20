@@ -1,0 +1,34 @@
+{#- Material's toc.html, except the home page also lists its h1 (gion) first. -#}
+{% set title = lang.t("toc") %}
+{% if config.mdx_configs.toc and config.mdx_configs.toc.title %}
+  {% set title = config.mdx_configs.toc.title %}
+{% endif %}
+<nav class="md-nav md-nav--secondary" aria-label="{{ title | e }}">
+  {% set toc = page.toc %}
+  {% set first = toc | first %}
+  {% set head = none %}
+  {% if first and first.level == 1 %}
+    {% set toc = first.children %}
+    {% if page.is_homepage %}
+      {% set head = first %}
+    {% endif %}
+  {% endif %}
+  {% if toc or head %}
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      {{ title }}
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      {% if head %}
+        <li class="md-nav__item">
+          <a href="{{ head.url }}" class="md-nav__link">
+            <span class="md-ellipsis">{{ head.title }}</span>
+          </a>
+        </li>
+      {% endif %}
+      {% for toc_item in toc %}
+        {% include "partials/toc-item.html" %}
+      {% endfor %}
+    </ul>
+  {% endif %}
+</nav>

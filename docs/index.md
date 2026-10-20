@@ -1,17 +1,25 @@
 # gion
 
-**Asymmetric git client for agents.** Skip the heavy network on large monorepos, get only what you need.
+<sub>*gion* (**GI-un**, "gi" as in **gi**t) = **g**it + sc**ion**</sub>
 
-| Task | git | gion, cold cache | gion, warm cache |
+**Asymmetric git client for agents.** Skip the heavy network on large repos, get only what you need.
+
+<div class="bench" markdown>
+
+| Task | git | gion (cold) | gion (warm) |
 | --- | --- | --- | --- |
-| Read one file (chromium, 66 GB) | 4.42 s | 2.68 s | **0.74 s** |
-| Find a path among 510k files (chromium) | 4.27 s | 19.60 s | **1.10 s** |
-| Check out one directory (baz) | 2.69 s | 1.27 s | **0.71 s** |
-| Grep all 510k files (chromium) | needs a full checkout | not measured | **3.49 s** |
+| Read one file | 4.42 s | 2.68 s | **0.74 s** (6x) |
+| Find a path | 4.27 s | 19.60 s | **1.10 s** (3.9x) |
+| Check out a folder | 7.87 s | 3.24 s | **1.11 s** (7.1x) |
+| Grep all files | all files on disk first | 19.63 s | **3.49 s** |
 
-Git times use the fastest git command that gets the same answer. [Full benchmarks](performance.md).
+<sub>Measured on chromium (66 GB, 510k files). [Full benchmarks](performance.md).</sub>
 
-Agents and CI jobs usually read a few files, search a bit and push one change, but a clone makes them download the whole repo first. gion fetches files, trees and commits from the remote only when a task asks for them:
+</div>
+
+## Why
+
+Git assumes every client keeps a full copy and can work offline. Agents and CI jobs are online all the time, usually read a few files, search a bit and push one change, and often run many at once on one machine. For them, a full clone is mostly waste. gion fetches files, trees and commits from the remote only when a task asks for them:
 
 - **Fast starts:** no clone step. Read, search, diff and log any repo right away.
 - **Small footprint:** a workspace holds only the paths you ask for. History stays on the server, so many agents can share one machine.
@@ -19,31 +27,35 @@ Agents and CI jobs usually read a few files, search a bit and push one change, b
 - **Works with your server today:** gion speaks the standard git wire protocol, so GitHub and other git servers need no setup.
 
 ```sh
-gion cat chromium/chromium HEAD:base/strings/string_util.h   # one file from a 66 GB repo, ~1 s
-gion grep chromium/chromium 'TrimWhitespaceASCII\('             # search all 510k files
-gion log chromium/chromium --path base/strings -n 5             # history without a clone
-gion clone baz-scm/baz ./baz --path demos                     # sparse workspace, no history
-cd baz && $EDITOR demos/x.md && gion commit -m "edit" --branch my-fix
+# Read Chromium's README from a 66 GB repo (~1 s)
+gion cat chromium/chromium HEAD:README.md
 ```
 
-!!! warning "Beta"
-    Commands, flags and on-disk formats (`.gion/`, the object cache) may change between releases without a migration path. Try it on branches.
+```sh
+# Search all 510k files (~3 s)
+gion grep chromium/chromium 'Hello, world'
+```
 
-## Why
+```sh
+# The last 5 changes to the README, without a clone (~5 s)
+gion log chromium/chromium --path README.md -n 5
+```
 
-Git assumes every client keeps a full copy and can work offline. Coding agents and CI jobs are online all the time, usually read a handful of files and write one, and often run many at once on the same machine. For them, a full clone is mostly waste.
+```sh
+# Check out only the docs folder (~5 s)
+gion clone chromium/chromium ./chromium --path docs
+```
 
-Anthropic's [Redesigning source control](https://www.anthropic.com/engineering/redesigning-source-control) describes Scion, an internal system that makes client and server deliberately unequal: the server holds the history, and the client keeps a small cache and fetches immutable objects by id. Scion replaces git to get there. gion applies the client half of that idea to existing git servers.
+```sh
+# Edit a file and see what changed (instant)
+cd chromium && echo "hello" >> docs/README.md && gion diff
+```
 
-The name: *gion* (**GI-un**, "gi" as in **gi**t) = **g**it + sc**ion**.
-
-gion is an independent project. It is not affiliated with or endorsed by Anthropic.
+To push, use a repo you can write to: `gion commit -m "my change" --branch my-fix` ([Workspaces](workspaces.md)).
 
 ## Where next
 
 - [Getting started](getting-started.md): install, credentials, first commands
-- [Workspaces](workspaces.md): edit part of a repo and push
-- [Branches & rebase](branches.md): switch, push to branches, rebase and resolve conflicts
-- [Search & history](search-and-history.md): `find`, `grep`, `diff`, `log`, `blame`
-- [Agents](agents.md) and [CI](ci.md)
-- [Command reference](reference.md)
+- [CI](ci.md): check out one directory or a PR's changed files in GitHub Actions
+- [Agents](agents.md): install the gion skill so your agent uses gion instead of `git clone`
+- [Command reference](reference.md): every command and flag

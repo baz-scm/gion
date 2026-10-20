@@ -1,5 +1,5 @@
 site_name: gion
-site_description: Asymmetric git client for agents. Skip the heavy network on large monorepos, get only what you need.
+site_description: Asymmetric git client for agents. Skip the heavy network on large repos, get only what you need.
 site_url: https://baz-scm.github.io/gion/
 repo_url: https://github.com/baz-scm/gion
 repo_name: baz-scm/gion
@@ -35,6 +35,7 @@ extra_css:
 
 markdown_extensions:
   - admonition
+  - md_in_html
   - tables
   - toc:
       permalink: true
@@ -44,12 +45,12 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
-  - Guides:
+  - CI: ci.md
+  - Agents: agents.md
+  - Workflows:
       - Workspaces: workspaces.md
       - Branches & rebase: branches.md
       - Search & history: search-and-history.md
-      - Agents: agents.md
-      - CI: ci.md
   - Command reference: reference.md
   - How it works: how-it-works.md
   - Performance: performance.md

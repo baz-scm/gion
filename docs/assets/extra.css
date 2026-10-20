@@ -167,3 +167,18 @@
 .md-nav__title {
   font-weight: 600;
 }
+
+/* Home page benchmark table: one line per cell, caption tucked under it. */
+.md-typeset .bench table:not([class]) th,
+.md-typeset .bench table:not([class]) td {
+  white-space: nowrap;
+  padding: 0.5em 0.9em;
+}
+.md-typeset .bench .md-typeset__scrollwrap,
+.md-typeset .bench table:not([class]) {
+  margin-bottom: 0;
+}
+.md-typeset .bench p {
+  margin: 0.5em 0 1.5em;
+  color: var(--md-default-fg-color--light);
+}

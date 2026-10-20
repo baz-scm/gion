@@ -2,8 +2,10 @@
 
 # gion
 
+<sub>*gion* (**GI-un**, "gi" as in **gi**t) = **g**it + sc**ion**</sub>
+
 **Asymmetric git client for agents.**<br>
-Skip the heavy network on large monorepos, get only what you need.
+Skip the heavy network on large repos, get only what you need.
 
 [![CI](https://github.com/baz-scm/gion/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/baz-scm/gion/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/baz-scm/gion?include_prereleases&sort=semver)](https://github.com/baz-scm/gion/releases)
@@ -13,20 +15,20 @@ Skip the heavy network on large monorepos, get only what you need.
 [![License](https://img.shields.io/github/license/baz-scm/gion)](LICENSE)
 ![Status: beta](https://img.shields.io/badge/status-beta-orange)
 
-<sub>*gion* (**GI-un**, "gi" as in **gi**t) = **g**it + sc**ion**, after the Scion design described [below](#why).</sub>
-
 </div>
 
-| Task | git | gion, cold cache | gion, warm cache |
+| Task | git | gion (cold) | gion (warm) |
 | --- | --- | --- | --- |
-| Read one file (chromium, 66 GB) | 4.42 s | 2.68 s | **0.74 s** |
-| Find a path among 510k files (chromium) | 4.27 s | 19.60 s | **1.10 s** |
-| Check out one directory (baz) | 2.69 s | 1.27 s | **0.71 s** |
-| Grep all 510k files (chromium) | needs a full checkout | not measured | **3.49 s** |
+| Read one file | 4.42 s | 2.68 s | **0.74 s** (6x) |
+| Find a path | 4.27 s | 19.60 s | **1.10 s** (3.9x) |
+| Check out a folder | 7.87 s | 3.24 s | **1.11 s** (7.1x) |
+| Grep all files | all files on disk first | 19.63 s | **3.49 s** |
 
-Git times use the fastest git command that gets the same answer. [Full benchmarks](https://baz-scm.github.io/gion/performance/).
+<sub>Measured on chromium (66 GB, 510k files). [Full benchmarks](https://baz-scm.github.io/gion/performance/).</sub>
 
-Agents and CI jobs usually read a few files, search a bit and push one change, but a clone makes them download the whole repo first. gion fetches files, trees and commits from the remote only when a task asks for them:
+## Why
+
+Git assumes every client keeps a full copy and can work offline. Agents and CI jobs are online all the time, usually read a few files, search a bit and push one change, and often run many at once on one machine. For them, a full clone is mostly waste. gion fetches files, trees and commits from the remote only when a task asks for them:
 
 - **Fast starts:** no clone step. Read, search, diff and log any repo right away.
 - **Small footprint:** a workspace holds only the paths you ask for. History stays on the server, so many agents can share one machine.
@@ -34,12 +36,31 @@ Agents and CI jobs usually read a few files, search a bit and push one change, b
 - **Works with your server today:** gion speaks the standard git wire protocol, so GitHub and other git servers need no setup.
 
 ```sh
-gion cat chromium/chromium HEAD:base/strings/string_util.h   # one file from a 66 GB repo, ~1 s
-gion grep chromium/chromium 'TrimWhitespaceASCII\('             # search all 510k files
-gion log chromium/chromium --path base/strings -n 5             # history, no clone
-gion clone baz-scm/baz ./baz --path demos                     # sparse workspace, no history
-cd baz && $EDITOR demos/x.md && gion commit -m "edit" --branch my-fix
+# Read Chromium's README from a 66 GB repo (~1 s)
+gion cat chromium/chromium HEAD:README.md
 ```
+
+```sh
+# Search all 510k files (~3 s)
+gion grep chromium/chromium 'Hello, world'
+```
+
+```sh
+# The last 5 changes to the README, without a clone (~5 s)
+gion log chromium/chromium --path README.md -n 5
+```
+
+```sh
+# Check out only the docs folder (~5 s)
+gion clone chromium/chromium ./chromium --path docs
+```
+
+```sh
+# Edit a file and see what changed (instant)
+cd chromium && echo "hello" >> docs/README.md && gion diff
+```
+
+To push, use a repo you can write to: `gion commit -m "my change" --branch my-fix` ([Workspaces](https://baz-scm.github.io/gion/workspaces/)).
 
 ## Install
 
@@ -48,9 +69,10 @@ curl -fsSL https://raw.githubusercontent.com/baz-scm/gion/main/install.sh | sh  
 go install github.com/baz-scm/gion@latest                                     # or with Go
 ```
 
-In GitHub Actions: `uses: baz-scm/gion-action/checkout@v1` for a sparse checkout, or `baz-scm/gion-action/changed@v1` for a PR's changed files ([CI guide](https://baz-scm.github.io/gion/ci/)).
+gion borrows your `gh` login, `GITHUB_TOKEN` or git credential helper; public repos need none.
 
-gion borrows your `gh` login, `GITHUB_TOKEN` or git credential helper; public repos need none. Using a coding agent? Run `gion skill install` so it knows how to use gion ([more](https://baz-scm.github.io/gion/agents/)).
+- **CI:** in GitHub Actions, `uses: baz-scm/gion-action/checkout@v1` for a sparse checkout, or `baz-scm/gion-action/changed@v1` for a PR's changed files ([CI guide](https://baz-scm.github.io/gion/ci/)).
+- **Agents:** run `gion skill install` so your coding agent uses gion instead of `git clone` ([agents guide](https://baz-scm.github.io/gion/agents/)).
 
 ## Commands
 
@@ -62,17 +84,9 @@ gion borrows your `gh` login, `GITHUB_TOKEN` or git credential helper; public re
 
 Every command takes `--md` for agent-friendly output and `-h` for its flags. See the [command reference](https://baz-scm.github.io/gion/reference/).
 
-## Why
-
-Git assumes every client keeps a full copy and can work offline. Coding agents and CI jobs are online all the time, usually read a handful of files and write one, and often run many at once. For them, a full clone is mostly waste.
-
-Anthropic's [Redesigning source control](https://www.anthropic.com/engineering/redesigning-source-control) describes Scion, which makes client and server deliberately unequal: the server holds the history; the client keeps a small cache and fetches immutable objects by id. Scion replaces git to get there. gion applies the client half of that idea to existing git servers.
-
-**gion is an independent project. It is not affiliated with or endorsed by Anthropic.**
-
 ## Docs
 
-**[baz-scm.github.io/gion](https://baz-scm.github.io/gion/)**: [getting started](https://baz-scm.github.io/gion/getting-started/), [workspaces](https://baz-scm.github.io/gion/workspaces/), [branches & rebase](https://baz-scm.github.io/gion/branches/), [search & history](https://baz-scm.github.io/gion/search-and-history/), [agents](https://baz-scm.github.io/gion/agents/), [CI](https://baz-scm.github.io/gion/ci/), [how it works](https://baz-scm.github.io/gion/how-it-works/), [performance](https://baz-scm.github.io/gion/performance/), [limitations & FAQ](https://baz-scm.github.io/gion/limitations/).
+**[baz-scm.github.io/gion](https://baz-scm.github.io/gion/)**: [getting started](https://baz-scm.github.io/gion/getting-started/), [CI](https://baz-scm.github.io/gion/ci/), [agents](https://baz-scm.github.io/gion/agents/), [workspaces](https://baz-scm.github.io/gion/workspaces/), [branches & rebase](https://baz-scm.github.io/gion/branches/), [search & history](https://baz-scm.github.io/gion/search-and-history/), [command reference](https://baz-scm.github.io/gion/reference/), [how it works](https://baz-scm.github.io/gion/how-it-works/), [performance](https://baz-scm.github.io/gion/performance/), [limitations & FAQ](https://baz-scm.github.io/gion/limitations/).
 
 Working on gion itself? See [AGENTS.md](AGENTS.md).
 
