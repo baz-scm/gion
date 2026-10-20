@@ -1,5 +1,5 @@
 site_name: gion
-site_description: A small asymmetric git client for agents and CI
+site_description: Asymmetric git client for agents. Skip the heavy network on large monorepos, get only what you need.
 site_url: https://baz-scm.github.io/gion/
 repo_url: https://github.com/baz-scm/gion
 repo_name: baz-scm/gion

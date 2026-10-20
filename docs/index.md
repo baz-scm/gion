@@ -1,8 +1,22 @@
 # gion
 
-**A small asymmetric git client for agents and CI.** Read, search, diff and push to any git repo without cloning it.
+**Asymmetric git client for agents.** Skip the heavy network on large monorepos, get only what you need.
 
-gion keeps only what a task needs and fetches files, trees and commits from the remote on demand. It speaks the standard git wire protocol, so it works with GitHub and other git servers as they are today.
+| Task | git | gion, cold cache | gion, warm cache |
+| --- | --- | --- | --- |
+| Read one file (chromium, 66 GB) | 4.42 s | 2.68 s | **0.74 s** |
+| Find a path among 510k files (chromium) | 4.27 s | 19.60 s | **1.10 s** |
+| Check out one directory (baz) | 2.69 s | 1.27 s | **0.71 s** |
+| Grep all 510k files (chromium) | needs a full checkout | not measured | **3.49 s** |
+
+Git times use the fastest git command that gets the same answer. [Full benchmarks](performance.md).
+
+Agents and CI jobs usually read a few files, search a bit and push one change, but a clone makes them download the whole repo first. gion fetches files, trees and commits from the remote only when a task asks for them:
+
+- **Fast starts:** no clone step. Read, search, diff and log any repo right away.
+- **Small footprint:** a workspace holds only the paths you ask for. History stays on the server, so many agents can share one machine.
+- **Full write path:** commit, push to branches and rebase with conflict resolution. Only new objects are sent.
+- **Works with your server today:** gion speaks the standard git wire protocol, so GitHub and other git servers need no setup.
 
 ```sh
 gion cat chromium/chromium HEAD:base/strings/string_util.h   # one file from a 66 GB repo, ~1 s
