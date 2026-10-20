@@ -28,6 +28,8 @@ Git assumes every client keeps a full copy and can work offline. Agents and CI j
 
 ## See it in action
 
+**Real time, not sped up.** The only fast-forward on this page is the git kind. <sub>(Typing is scripted; the cache is warm.)</sub>
+
 **Read one file from a 66 GB repo.** Nothing lands on disk.
 
 <video class="demo" src="assets/demos/cat.mp4" autoplay loop muted playsinline></video>
