@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/baz-scm/gion/internal/repo"
 	"github.com/baz-scm/gion/internal/testgit"
 )
 
@@ -127,6 +128,69 @@ func TestGitMirrorSparse(t *testing.T) {
 	if got := testgit.Run(t, dir, "show", "HEAD:d/f/g.txt"); got != "g2" {
 		t.Errorf("HEAD:d/f/g.txt = %q", got)
 	}
+	testgit.Run(t, dir, "fsck", "--strict")
+}
+
+func TestGitHeadIsUpstream(t *testing.T) {
+	t.Setenv("GIT_AUTHOR_NAME", "gion")
+	t.Setenv("GIT_AUTHOR_EMAIL", "gion@test")
+	remote, clone := testgit.Serve(t)
+	pushUpstream(t, clone, "main", map[string]string{"x/y.txt": "y\n"}) // main gets a parent
+	// .git takes the upstream commit from the shared cache.
+	t.Setenv("GION_CACHE", t.TempDir())
+	r, err := repo.Open(remote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { r.Close() })
+	ctx := context.Background()
+	main := testgit.Run(t, clone, "rev-parse", "main")
+
+	// A whole workspace's HEAD is the cloned commit, shallow.
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(ctx, r, dir, "main", nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := testgit.Run(t, dir, "rev-parse", "HEAD"); got != main {
+		t.Errorf("HEAD = %s, want %s", got, main)
+	}
+	if got := testgit.Run(t, dir, "rev-parse", "GION_HEAD"); got != main {
+		t.Errorf("GION_HEAD = %s, want %s", got, main)
+	}
+	if got := testgit.Run(t, dir, "log", "--format=%s"); got != "upstream" {
+		t.Errorf("log = %q", got)
+	}
+	if got := testgit.Run(t, dir, "status", "--porcelain"); got != "" {
+		t.Errorf("git status = %q", got)
+	}
+	testgit.Run(t, dir, "fsck", "--strict")
+
+	write(t, dir, "a.txt", "a2\n")
+	if _, err := w.Commit(ctx, r, "edit", "ws-branch", ""); err != nil {
+		t.Fatal(err)
+	}
+	testgit.Run(t, clone, "fetch", "-q", "origin", "ws-branch")
+	if got, want := testgit.Run(t, dir, "rev-parse", "HEAD"), testgit.Run(t, clone, "rev-parse", "FETCH_HEAD"); got != want {
+		t.Errorf("after commit: HEAD = %s, want %s", got, want)
+	}
+	testgit.Run(t, dir, "fsck", "--strict")
+
+	// A sparse workspace keeps a snapshot HEAD; GION_HEAD names the upstream.
+	dir = filepath.Join(t.TempDir(), "ws")
+	if _, _, err := Clone(ctx, r, dir, "main", []string{"d/f"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := testgit.Run(t, dir, "rev-parse", "HEAD"); got == main {
+		t.Error("sparse HEAD is the upstream commit")
+	}
+	if got := testgit.Run(t, dir, "rev-parse", "--short=7", "GION_HEAD"); got != main[:7] {
+		t.Errorf("GION_HEAD = %s, want %s", got, main[:7])
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git", "shallow")); err == nil {
+		t.Error("sparse workspace has .git/shallow")
+	}
+	testgit.Run(t, dir, "log", "--all", "--oneline")
 	testgit.Run(t, dir, "fsck", "--strict")
 }
 

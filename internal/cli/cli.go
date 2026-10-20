@@ -488,7 +488,7 @@ func clone(ctx context.Context, args []string) error {
 		fmt.Printf("- Commit: `%s` (%s)\n- Scope: %s\n", res.Commit, *ref, scope)
 		fmt.Printf("- %d files, %s, %s\n", res.Files, humanBytes(res.Bytes), elapsed)
 		if !*noGit {
-			fmt.Printf("- No history. The `.git` is a local snapshot for git-based tools (pre-commit, `git diff`); push with `%s commit`, not `git commit`.\n", prog)
+			fmt.Printf("- No history. The `.git` is a local snapshot for git-based tools (pre-commit, `git diff`); `git rev-parse GION_HEAD` is the upstream commit. Push with `%s commit`, not `git commit`.\n", prog)
 		} else {
 			fmt.Printf("- No history and no `.git`: use `%s status` and `%s commit` inside it.\n", prog, prog)
 		}

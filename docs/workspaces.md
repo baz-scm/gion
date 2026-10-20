@@ -62,7 +62,7 @@ gion commit -m "fix handler" --branch my-fix   # runs the hooks, then pushes
 pre-commit run --all-files          # check every workspace file, any time
 ```
 
-That `.git` is a local snapshot, not a clone: `HEAD` is a single commit with no history whose tree holds exactly the workspace's files, on a branch named after the one you push to. In a sparse workspace the rest of the repo is simply absent, so `git status` stays quiet about it. A local `git commit` goes nowhere; push with `gion commit`.
+That `.git` is a local snapshot, not a clone, with no history, on a branch named after the one you push to. When the workspace holds the whole repo, `HEAD` is the upstream commit itself, as in a depth-1 clone, so `git rev-parse HEAD` gives the real commit id. In a sparse workspace `HEAD` is a local commit whose tree holds exactly the workspace's files: the rest of the repo is simply absent, so `git status` stays quiet about it. Either way `git rev-parse GION_HEAD` gives the upstream commit, which is what to use for naming build artifacts (`sha-$(git rev-parse --short=7 GION_HEAD)`). A local `git commit` goes nowhere; push with `gion commit`.
 
 `gion commit` runs the `pre-commit` and `commit-msg` hooks (from `.git/hooks`, or `core.hooksPath` as husky sets it) the way `git commit -a` does: every change is staged first, so hooks that check staged files see all of them. If a hook fails, nothing is pushed; hooks that fix files (formatters) leave the fixes on disk, so commit again. `--no-verify` skips them.
 

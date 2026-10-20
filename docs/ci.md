@@ -15,6 +15,8 @@ In GitHub Actions, use [gion-action](https://github.com/baz-scm/gion-action). Ea
 
 You get `services/api` plus the files in its parent directories (root config, lockfiles), at `$GITHUB_SHA`. Leave `paths` empty for the whole tree. Other inputs: `repository`, `ref`, `path` (the directory to put the workspace in) and `git: false` to skip the local `.git` snapshot.
 
+For the commit id (to tag images, say), `git rev-parse GION_HEAD` is the upstream commit in any workspace; with no `paths`, `git rev-parse HEAD` is too. In a sparse workspace `HEAD` is a local snapshot commit.
+
 There is no history, so tools that need tags or `git log` (GoReleaser, changelog generators, `git describe`) still need `actions/checkout`.
 
 ## Only the changed files

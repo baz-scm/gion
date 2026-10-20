@@ -25,11 +25,16 @@ import (
 
 // A workspace (unless cloned with --no-git) has a .git that git-based tools
 // (pre-commit, `git diff`, `git ls-files`) can read. It is a mirror of the
-// workspace state, rewritten on every save: HEAD is a snapshot commit, with no
-// parent, whose tree holds exactly the tracked files, and the index matches
-// it. Files outside a sparse workspace's paths are not in that tree, so git
-// sees a small, complete repo rather than a huge sparse one. Only gion
-// pushes; a local `git commit` goes nowhere.
+// workspace state, rewritten on every save. When the tracked files are the
+// whole of the cloned commit's tree, HEAD is that commit, as in a depth-1
+// clone (.git/shallow). Otherwise HEAD is a snapshot commit, with no parent,
+// whose tree holds exactly the tracked files: files outside a sparse
+// workspace's paths are not in that tree, so git sees a small, complete repo
+// rather than a huge sparse one. Either way the index matches HEAD, and
+// .git/GION_HEAD names the upstream commit (`git rev-parse GION_HEAD`); it is
+// a pseudoref, not a ref under refs/, as the object may be absent and
+// `git log --all` would fail on it. Only gion pushes; a local `git commit`
+// goes nowhere.
 
 const gitDir = ".git"
 
@@ -88,14 +93,72 @@ func (w *Workspace) writeGit() error {
 	if err := objs.flush(); err != nil {
 		return err
 	}
-	head, err := w.gitCommit(tree)
+	head, upstream, err := w.gitUpstream(tree, src)
 	if err != nil {
+		return err
+	}
+	if !upstream {
+		if head, err = w.gitCommit(tree); err != nil {
+			return err
+		}
+	}
+	if err := w.gitShallow(upstream); err != nil {
 		return err
 	}
 	if err := w.gitHead(head); err != nil {
 		return err
 	}
+	if err := writeAtomic(w.gitPath("GION_HEAD"), []byte(w.State.Base+"\n")); err != nil {
+		return err
+	}
 	return w.gitIndex(paths, nil)
+}
+
+// gitUpstream copies the cloned commit into .git and returns it when its tree
+// is tree, so HEAD can be the real commit. ok is false when the workspace
+// holds less than that tree, or the commit isn't to be had from .git or the
+// cache.
+func (w *Workspace) gitUpstream(tree plumbing.Hash, cacheDir string) (h plumbing.Hash, ok bool, err error) {
+	base, isHash := plumbing.FromHex(w.State.Base)
+	if !isHash {
+		return plumbing.ZeroHash, false, nil
+	}
+	o, gerr := w.gitGet(base)
+	if gerr != nil {
+		if cacheDir == "" {
+			return plumbing.ZeroHash, false, nil
+		}
+		s, err := cache.Open(cacheDir)
+		if err != nil {
+			return plumbing.ZeroHash, false, nil
+		}
+		if o, err = s.Get(base); err != nil {
+			return plumbing.ZeroHash, false, nil
+		}
+	}
+	var c object.Commit
+	if o.Type() != plumbing.CommitObject || c.Decode(o) != nil || c.TreeHash != tree {
+		return plumbing.ZeroHash, false, nil
+	}
+	if gerr != nil {
+		if err := w.gitPut(o); err != nil {
+			return plumbing.ZeroHash, false, err
+		}
+	}
+	return base, true, nil
+}
+
+// gitShallow marks the cloned commit as having no parents in .git when HEAD
+// is that commit, and removes the mark otherwise.
+func (w *Workspace) gitShallow(upstream bool) error {
+	p := w.gitPath("shallow")
+	if !upstream {
+		if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	return writeAtomic(p, []byte(w.State.Base+"\n"))
 }
 
 // ErrHookFailed means a commit hook rejected the commit.
