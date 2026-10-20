@@ -26,28 +26,38 @@ Git assumes every client keeps a full copy and can work offline. Agents and CI j
 - **Full write path:** commit, push to branches and rebase with conflict resolution. Only new objects are sent.
 - **Works with your server today:** gion speaks the standard git wire protocol, so GitHub and other git servers need no setup.
 
-```sh
-# Read Chromium's README from a 66 GB repo (~1 s)
-gion cat chromium/chromium HEAD:README.md
-```
+## See it in action
+
+**Read one file from a 66 GB repo.** Nothing lands on disk.
+
+<video class="demo" src="assets/demos/cat.mp4" autoplay loop muted playsinline></video>
 
 ```sh
-# Search all 510k files (~3 s)
-gion grep chromium/chromium 'Hello, world'
+gion cat chromium/chromium abc2bc3fe6dd:README.md
 ```
 
-```sh
-# The last 5 changes to the README, without a clone (~5 s)
-gion log chromium/chromium --path README.md -n 5
-```
+**History of one file**, without a clone.
+
+<video class="demo" src="assets/demos/log.mp4" autoplay loop muted playsinline></video>
 
 ```sh
-# Check out only the docs folder (~5 s)
-gion clone chromium/chromium ./chromium --path docs
+gion log chromium/chromium abc2bc3fe6dd --path README.md -n 5
 ```
 
+**What a commit changed.** Only the files that differ are fetched.
+
+<video class="demo" src="assets/demos/diff.mp4" autoplay loop muted playsinline></video>
+
 ```sh
-# Edit a file and see what changed (instant)
+gion diff chromium/chromium bfe93d2fd85a --path base/strings
+```
+
+**Check out one folder, edit and diff.** The workspace holds `docs` and the top-level files, nothing else.
+
+<video class="demo" src="assets/demos/workspace.mp4" autoplay loop muted playsinline></video>
+
+```sh
+gion clone chromium/chromium ./chromium --path docs --ref abc2bc3fe6dd
 cd chromium && echo "hello" >> docs/README.md && gion diff
 ```
 

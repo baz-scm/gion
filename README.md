@@ -35,32 +35,48 @@ Git assumes every client keeps a full copy and can work offline. Agents and CI j
 - **Full write path:** commit, push to branches and rebase with conflict resolution. Only new objects are sent.
 - **Works with your server today:** gion speaks the standard git wire protocol, so GitHub and other git servers need no setup.
 
-```sh
-# Read Chromium's README from a 66 GB repo (~1 s)
-gion cat chromium/chromium HEAD:README.md
-```
+## See it in action
+
+**Read one file from a 66 GB repo.** Nothing lands on disk.
+
+<img src="docs/assets/demos/cat.gif" alt="gion cat reads chromium's README; the folder stays empty" width="720">
 
 ```sh
-# Search all 510k files (~3 s)
-gion grep chromium/chromium 'Hello, world'
+gion cat chromium/chromium abc2bc3fe6dd:README.md
 ```
 
-```sh
-# The last 5 changes to the README, without a clone (~5 s)
-gion log chromium/chromium --path README.md -n 5
-```
+**History of one file**, without a clone.
+
+<img src="docs/assets/demos/log.gif" alt="gion log lists the changes to chromium's README" width="720">
 
 ```sh
-# Check out only the docs folder (~5 s)
-gion clone chromium/chromium ./chromium --path docs
+gion log chromium/chromium abc2bc3fe6dd --path README.md -n 5
 ```
 
+**What a commit changed.** Only the files that differ are fetched.
+
+<img src="docs/assets/demos/diff.gif" alt="gion diff shows one chromium commit's changes in base/strings" width="720">
+
 ```sh
-# Edit a file and see what changed (instant)
+gion diff chromium/chromium bfe93d2fd85a --path base/strings
+```
+
+**Check out one folder, edit and diff.** The workspace holds `docs` and the top-level files, nothing else.
+
+<img src="docs/assets/demos/workspace.gif" alt="gion clone checks out chromium's docs folder, then gion diff shows an edit" width="720">
+
+```sh
+gion clone chromium/chromium ./chromium --path docs --ref abc2bc3fe6dd
 cd chromium && echo "hello" >> docs/README.md && gion diff
 ```
 
-To push, use a repo you can write to: `gion commit -m "my change" --branch my-fix` ([Workspaces](https://baz-scm.github.io/gion/workspaces/)).
+**Commit and push a branch** from a repo you can write to ([Workspaces](https://baz-scm.github.io/gion/workspaces/)).
+
+<img src="docs/assets/demos/push.gif" alt="gion commit pushes an edit to a new branch" width="720">
+
+```sh
+gion commit -m "my change" --branch my-fix
+```
 
 ## Install
 

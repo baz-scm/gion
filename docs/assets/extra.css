@@ -182,3 +182,14 @@
   margin: 0.5em 0 1.5em;
   color: var(--md-default-fg-color--light);
 }
+
+/* Demo clips recorded with VHS (demos/*.tape). */
+.md-typeset video.demo {
+  display: block;
+  width: 100%;
+  max-width: 900px;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--baz-border);
+  margin: 0.6em 0 0.4em;
+}
