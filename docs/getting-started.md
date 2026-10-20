@@ -21,7 +21,7 @@ With Go:
 go install github.com/baz-scm/gion@latest   # lands in $(go env GOPATH)/bin
 ```
 
-Check with `gion version`. If you use a coding agent, also run `gion skill install` (see [Agents](agents.md)).
+Check with `gion version`. If you use a coding agent, also run `gion skill install` (see [Agents](agents.md)). In GitHub Actions, use [gion-action](ci.md) instead.
 
 ## Credentials
 

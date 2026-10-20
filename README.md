@@ -37,6 +37,8 @@ curl -fsSL https://raw.githubusercontent.com/baz-scm/gion/main/install.sh | sh  
 go install github.com/baz-scm/gion@latest                                     # or with Go
 ```
 
+In GitHub Actions: `uses: baz-scm/gion-action/checkout@v1` for a sparse checkout, or `baz-scm/gion-action/changed@v1` for a PR's changed files ([CI guide](https://baz-scm.github.io/gion/ci/)).
+
 gion borrows your `gh` login, `GITHUB_TOKEN` or git credential helper; public repos need none. Using a coding agent? Run `gion skill install` so it knows how to use gion ([more](https://baz-scm.github.io/gion/agents/)).
 
 ## Commands
