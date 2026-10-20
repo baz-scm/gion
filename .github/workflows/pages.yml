@@ -18,16 +18,13 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       # Checked out with gion, like CI.
-      - name: Install gion (latest release)
-        run: |
-          gh release download -R baz-scm/gion --pattern "gion_*_linux_amd64.tar.gz" -O - | tar -xz -C "$RUNNER_TEMP" gion
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-      - name: Check out the docs with gion
-        run: gion clone "$GITHUB_REPOSITORY" . --ref "$GITHUB_SHA" --path docs --path mkdocs.yml --md
+      - uses: baz-scm/gion-action/checkout@v1
+        with:
+          paths: |
+            docs
+            mkdocs.yml
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"

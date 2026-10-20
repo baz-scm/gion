@@ -17,20 +17,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       # Dogfooding: check out with the latest gion release instead of
-      # actions/checkout, so every run also tests that gion can clone. gion
-      # (all versions) borrows GH_TOKEN through `gh auth token`.
-      - name: Install gion (latest release)
-        run: |
-          os=$(uname -s | tr '[:upper:]' '[:lower:]')
-          case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac
-          gh release download -R baz-scm/gion --pattern "gion_*_${os}_${arch}.tar.gz" -O - | tar -xz -C "$RUNNER_TEMP" gion
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-      - name: Check out with gion
-        run: gion clone "$GITHUB_REPOSITORY" . --ref "$GITHUB_SHA" --md
+      # actions/checkout, so every run also tests that gion can clone.
+      - uses: baz-scm/gion-action/checkout@v1
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -53,20 +43,10 @@ jobs:
   release-dry-run:
     if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       # Dogfooding: check out with the latest gion release instead of
-      # actions/checkout, so every run also tests that gion can clone. gion
-      # (all versions) borrows GH_TOKEN through `gh auth token`.
-      - name: Install gion (latest release)
-        run: |
-          os=$(uname -s | tr '[:upper:]' '[:lower:]')
-          case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac
-          gh release download -R baz-scm/gion --pattern "gion_*_${os}_${arch}.tar.gz" -O - | tar -xz -C "$RUNNER_TEMP" gion
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-      - name: Check out with gion
-        run: gion clone "$GITHUB_REPOSITORY" . --ref "$GITHUB_SHA" --md
+      # actions/checkout, so every run also tests that gion can clone.
+      - uses: baz-scm/gion-action/checkout@v1
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
