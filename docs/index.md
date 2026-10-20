@@ -6,12 +6,11 @@
 
 <div class="bench" markdown>
 
-| Task | git | gion (cold) | gion (warm) |
+| Task | git | gion (warm) | Disk: git → gion |
 | --- | --- | --- | --- |
-| Read one file | 4.42 s | 2.68 s | **0.74 s** (6x) |
-| Find a path | 4.27 s | 19.60 s | **1.10 s** (3.9x) |
-| Check out a folder | 7.87 s | 3.24 s | **1.11 s** (7.1x) |
-| Grep all files | all files on disk first | 19.63 s | **3.49 s** |
+| Read one file | 4.42 s | **0.74 s** (6x) | 19 MB → **32 KB** (590x) |
+| Check out a folder | 7.87 s | **1.11 s** (7.1x) | 172 MB → **111 MB** (1.6x) |
+| Grep all files | 203 s (clone first) | **3.49 s** (58x) | 7.1 GB → **187 MB** (38x) |
 
 <sub>Measured on chromium (66 GB, 510k files). [Full benchmarks](performance.md).</sub>
 
