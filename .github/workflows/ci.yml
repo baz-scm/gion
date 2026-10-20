@@ -20,7 +20,7 @@ jobs:
     steps:
       # Dogfooding: check out with gion instead of actions/checkout, so every
       # run also tests that gion can clone. gion-action installs the newest
-      # gion release (release.yml bumps its default).
+      # gion release (bumped after each release, see AGENTS.md).
       - uses: baz-scm/gion-action/checkout@v1
       - uses: actions/setup-go@v7
         with:
@@ -47,7 +47,7 @@ jobs:
     steps:
       # Dogfooding: check out with gion instead of actions/checkout, so every
       # run also tests that gion can clone. gion-action installs the newest
-      # gion release (release.yml bumps its default).
+      # gion release (bumped after each release, see AGENTS.md).
       - uses: baz-scm/gion-action/checkout@v1
       - uses: actions/setup-go@v7
         with:

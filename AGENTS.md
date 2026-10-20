@@ -38,7 +38,13 @@ When the maintainer asks for a release, tag main with gion:
 gion tag baz-scm/gion vX.Y.Z -m "vX.Y.Z"
 ```
 
-The release workflow reruns CI on that exact commit, checks the tag is on main, and GoReleaser publishes binaries and checksums. `install.sh` and `go install …@latest` pick it up, and it dispatches [baz-scm/gion-action](https://github.com/baz-scm/gion-action) to make the release its default (needs the `GION_ACTION_TOKEN` secret). Pick the version by semver: new commands or flags are a minor bump, fixes a patch.
+The release workflow reruns CI on that exact commit, checks the tag is on main, and GoReleaser publishes binaries and checksums. `install.sh` and `go install …@latest` pick it up. Pick the version by semver: new commands or flags are a minor bump, fixes a patch.
+
+Once the release is published, make it [gion-action](https://github.com/baz-scm/gion-action)'s default (this CI and `@v1` users install that version). It tests the new version, tags the next `v1.x.y` and moves `v1`; see its [CONTRIBUTING.md](https://github.com/baz-scm/gion-action/blob/main/CONTRIBUTING.md):
+
+```sh
+gh workflow run bump-gion.yml -R baz-scm/gion-action
+```
 
 ## Benchmarks
 
