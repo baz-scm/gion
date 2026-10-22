@@ -70,7 +70,7 @@ Pushes are compare-and-swap: if someone else pushed to the branch on other files
 ## Rules
 
 - Never `git clone` or `gion clone` without `--path` just to read or search: use `cat`, `find`, `grep`.
-- Whole-repo `grep` on a big repo uses GitHub code search: about 10 requests a minute per user, 1 to 10 per grep. Pass `--path` when you know where to look. On a rate-limit error, wait the time it gives, or narrow with `--path`, or use `--local`.
+- Whole-repo `grep` on a big repo uses GitHub code search: about 10 requests a minute per user, 1 to 10 per grep. Pass `--path` when you know where to look. If you have the Baz MCP server, use its `remote_grep` (contents, full regex) and `remote_file_search` (paths) for whole-repo searches instead: they read Baz's index, with no GitHub rate limit. Then `gion cat` the hits; the index can trail the branch by a few commits. Without Baz, on a rate-limit error wait the time it gives, or narrow with `--path`, or use `--local`.
 - Inside a sparse workspace, your file tools only see the cloned paths. Search the rest of the repo with `gion grep <remote>` / `gion find <remote>`, and `gion add` what you need to edit.
 - Push to a branch, not the default branch, unless told to.
 - To run tests in a workspace, `gion add` the test directories and the code they import. If that's most of the repo, push the branch and let CI run them.

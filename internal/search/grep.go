@@ -84,11 +84,11 @@ func Grep(ctx context.Context, r *repo.Repo, idx *index.Index, o GrepOptions) (G
 	if res.Strategy == Forge {
 		lit := longestLiteral(o.Pattern)
 		if len(lit) < 3 {
-			return res, fmt.Errorf("%d files to search, and the pattern has no literal text of 3+ characters for code search to look up; narrow with --path, or force a full scan with --local", len(cands))
+			return res, fmt.Errorf("%d files to search, and the pattern has no literal text of 3+ characters for code search to look up. %s; otherwise narrow with --path, or force a full scan with --local", len(cands), bazHint(r.Remote))
 		}
 		paths, total, err := forge.CodeSearch(ctx, r.Remote, lit, o.ForgeDir)
 		if errors.Is(err, forge.ErrUnsupported) {
-			return res, fmt.Errorf("%d files to search and %v; narrow with --path or use --local", len(cands), err)
+			return res, fmt.Errorf("%d files to search and %v. %s; otherwise narrow with --path or use --local", len(cands), err, bazHint(r.Remote))
 		}
 		var rl *forge.ErrRateLimited
 		if errors.As(err, &rl) {
@@ -96,7 +96,7 @@ func Grep(ctx context.Context, r *repo.Repo, idx *index.Index, o GrepOptions) (G
 			if rl.Retry > 0 {
 				wait = fmt.Sprintf("wait %s", rl.Retry.Round(time.Second))
 			}
-			return res, fmt.Errorf("%v\n%d files to search; GitHub allows about 10 code searches a minute. %s and rerun, narrow with --path so it scans locally, use --local to scan every file, or gion clone the folders you need and search them there", rl, len(cands), wait)
+			return res, fmt.Errorf("%v\n%d files to search; GitHub allows about 10 code searches a minute. %s. Otherwise %s and rerun, narrow with --path so it scans locally, use --local to scan every file, or gion clone the folders you need and search them there", rl, len(cands), bazHint(r.Remote), wait)
 		}
 		if err != nil {
 			return res, err
@@ -116,7 +116,7 @@ func Grep(ctx context.Context, r *repo.Repo, idx *index.Index, o GrepOptions) (G
 		if total > len(paths) {
 			res.Note += fmt.Sprintf(", %d of %d hits returned", len(paths), total)
 		}
-		res.Note += "); files GitHub doesn't index, or changed off the default branch, can be missed"
+		res.Note += "); files GitHub doesn't index, or changed off the default branch, can be missed. " + bazHint(r.Remote)
 	}
 
 	hashes := make([]plumbing.Hash, len(cands))
@@ -190,4 +190,14 @@ func lit(re *syntax.Regexp) string {
 		return best
 	}
 	return ""
+}
+
+// bazHint points agents at Baz's indexed search, which has no forge rate
+// limit and takes a full regex, for when code search can't help.
+func bazHint(remote string) string {
+	name, ok := forge.GitHubRepo(remote)
+	if !ok {
+		name = remote
+	}
+	return fmt.Sprintf("Baz searches whole repos it indexes with no GitHub rate limit: use the Baz MCP server's remote_grep (repository %q) if you have it", name)
 }
