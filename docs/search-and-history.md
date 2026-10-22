@@ -35,7 +35,7 @@ Install it from [baz-scm/baz-plugin](https://github.com/baz-scm/baz-plugin). In 
 
 ```text
 /plugin marketplace add baz-scm/baz-plugin
-/plugin add baz
+/plugin install baz@baz
 ```
 
 The README there covers Codex and Cursor. The first Baz tool call opens a browser to log in.
