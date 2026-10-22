@@ -31,6 +31,15 @@ GitHub allows about 10 code search requests a minute per user, and one grep take
 
 Agents with the [Baz](https://baz.co) MCP server can skip that budget: its `remote_grep` and `remote_file_search` tools search Baz's index of the repo with full regexes and no GitHub rate limit. gion's errors and notes point there when code search is the bottleneck; read the hits with `gion cat`, since the index can trail the branch by a few commits.
 
+Install it from [baz-scm/baz-plugin](https://github.com/baz-scm/baz-plugin). In Claude Code:
+
+```text
+/plugin marketplace add baz-scm/baz-plugin
+/plugin add baz
+```
+
+The README there covers Codex and Cursor. The first Baz tool call opens a browser to log in.
+
 ## Changes: `diff`
 
 ```sh

@@ -199,5 +199,5 @@ func bazHint(remote string) string {
 	if !ok {
 		name = remote
 	}
-	return fmt.Sprintf("Baz searches whole repos it indexes with no GitHub rate limit: use the Baz MCP server's remote_grep (repository %q) if you have it", name)
+	return fmt.Sprintf("Baz searches whole repos it indexes with no GitHub rate limit: use the Baz MCP server's remote_grep (repository %q) if you have it, or install it from https://github.com/baz-scm/baz-plugin", name)
 }
