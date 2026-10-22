@@ -1,6 +1,9 @@
 package search
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestCompilePath(t *testing.T) {
 	cases := []struct {
@@ -73,5 +76,20 @@ func TestLiteralDirs(t *testing.T) {
 	}
 	if d := LiteralDirs([]string{"base", "*.go"}); d != nil {
 		t.Errorf("unanchored glob: %v, want nil", d)
+	}
+}
+
+func TestBazHint(t *testing.T) {
+	for remote, want := range map[string]string{
+		"baz-scm/gion":                        `repository "baz-scm/gion"`,
+		"https://github.com/baz-scm/gion.git": `repository "baz-scm/gion"`,
+		"https://gitlab.com/a/b":              `repository "https://gitlab.com/a/b"`,
+	} {
+		h := bazHint(remote)
+		for _, s := range []string{want, "/plugin marketplace add baz-scm/baz-plugin", "/plugin install baz@baz"} {
+			if !strings.Contains(h, s) {
+				t.Errorf("bazHint(%q) = %q, missing %q", remote, h, s)
+			}
+		}
 	}
 }
