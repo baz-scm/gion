@@ -2,6 +2,8 @@
 
 Median of 3 runs, measured 2026-10-15 on an Apple M2 Pro (16 GB, macOS 26.6) over a home connection to github.com, gion v0.1.0-dev vs git 2.54. **Cold** means an empty gion cache; **warm** reuses it. Refs are never cached, so every gion run still makes at least one round trip. Each git baseline is the fastest git command that gets the same answer.
 
+![Grep all 510k files of chromium: gion 3.49 s, git 203 s (58x faster)](assets/perf-race.svg)
+
 ![gion vs git on chromium: grep all files 58x faster, check out a folder 7.1x faster, read one file 6x faster](assets/perf-chart-light.svg#only-light)
 ![gion vs git on chromium: grep all files 58x faster, check out a folder 7.1x faster, read one file 6x faster](assets/perf-chart-dark.svg#only-dark)
 

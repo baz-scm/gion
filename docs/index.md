@@ -4,19 +4,12 @@
 
 **Asymmetric git client for agents.** Skip the heavy network on large repos, get only what you need.
 
-![Read one file from chromium: gion 0.74 s, git 4.42 s](assets/perf-race.svg)
+![Grep all 510k files of chromium: gion 3.49 s, git 203 s (58x faster)](assets/perf-race.svg)
 
-<div class="bench" markdown>
+![gion vs git on chromium: grep all files 58x faster, check out a folder 7.1x faster, read one file 6x faster](assets/perf-chart-light.svg#only-light)
+![gion vs git on chromium: grep all files 58x faster, check out a folder 7.1x faster, read one file 6x faster](assets/perf-chart-dark.svg#only-dark)
 
-| Task | git | gion (warm) | Disk: git → gion |
-| --- | --- | --- | --- |
-| Read one file | 4.42 s | **0.74 s** (6x) | 19 MB → **32 KB** (590x) |
-| Check out a folder | 7.87 s | **1.11 s** (7.1x) | 172 MB → **111 MB** (1.6x) |
-| Grep all files | 203 s (clone first) | **3.49 s** (58x) | 7.1 GB → **187 MB** (38x) |
-
-<sub>Measured on chromium (66 GB, 510k files). [Full benchmarks](performance.md).</sub>
-
-</div>
+<sub>Measured on chromium (66 GB, 510k files), gion with a warm cache. [Full benchmarks](performance.md).</sub>
 
 ## Why
 
@@ -29,7 +22,7 @@ Git assumes every client keeps a full copy and can work offline. Agents and CI j
 
 ## See it in action
 
-**Real time, not sped up.** The only fast-forward on this page is the git kind.
+Demo clips are real time, not sped up.
 
 **Read one file from a 66 GB repo.** Nothing lands on disk.
 
