@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="786" viewBox="0 -8 1000 786" role="img" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title>gion vs git on chromium: grep all files 58x faster, check out a folder 7.1x faster, read one file 6x faster</title>
+<rect x="0" y="4" width="12" height="12" rx="3" fill="#444ac2"/>
+<text x="20" y="15" font-size="15" fill="#1d202c">gion (warm cache)</text>
+<rect x="170" y="4" width="12" height="12" rx="3" fill="#cacedc"/>
+<text x="190" y="15" font-size="15" fill="#1d202c">git</text>
+<line x1="0" y1="34" x2="1000" y2="34" stroke="#e9ebf1"/>
+<text x="0" y="84" font-size="20" font-weight="600" fill="#1d202c">Grep all files</text>
+<text x="-3" y="154" font-size="64" font-weight="500" letter-spacing="-2" fill="#444ac2">58x</text>
+<text x="0" y="184" font-size="15" fill="#646a8a">faster with gion</text>
+<text x="300" y="76" font-size="13" fill="#646a8a">Time</text>
+<text x="1000" y="76" font-size="13" font-weight="600" text-anchor="end" fill="#444ac2">58x faster</text>
+<text x="300" y="104" font-size="15" fill="#646a8a">gion</text>
+<rect x="380" y="86" width="620" height="26" rx="6" fill="#f1f2f6"/>
+<rect x="380" y="86" width="10.7" height="26" rx="6" fill="#444ac2"/>
+<text x="400.7" y="104" font-size="14" font-weight="600" fill="#1d202c">3.49 s</text>
+<text x="300" y="138" font-size="15" fill="#646a8a">git</text>
+<rect x="380" y="120" width="620" height="26" rx="6" fill="#f1f2f6"/>
+<rect x="380" y="120" width="620.0" height="26" rx="6" fill="#cacedc"/>
+<text x="990.0" y="138" font-size="14" font-weight="600" text-anchor="end" fill="#2f3449">203 s, clone first</text>
+<text x="300" y="182" font-size="13" fill="#646a8a">Disk used</text>
+<text x="1000" y="182" font-size="13" font-weight="600" text-anchor="end" fill="#444ac2">38x less</text>
+<text x="300" y="210" font-size="15" fill="#646a8a">gion</text>
+<rect x="380" y="192" width="620" height="26" rx="6" fill="#f1f2f6"/>
+<rect x="380" y="192" width="16.3" height="26" rx="6" fill="#444ac2"/>
+<text x="406.3" y="210" font-size="14" font-weight="600" fill="#1d202c">187 MB</text>
+<text x="300" y="244" font-size="15" fill="#646a8a">git</text>
+<rect x="380" y="226" width="620" height="26" rx="6" fill="#f1f2f6"/>
+<rect x="380" y="226" width="620.0" height="26" rx="6" fill="#cacedc"/>
+<text x="990.0" y="244" font-size="14" font-weight="600" text-anchor="end" fill="#2f3449">7.1 GB</text>
+<line x1="0" y1="292" x2="1000" y2="292" stroke="#e9ebf1"/>
+<text x="0" y="336" font-size="20" font-weight="600" fill="#1d202c">Check out a folder</text>
+<text x="-3" y="406" font-size="64" font-weight="500" letter-spacing="-2" fill="#444ac2">7.1x</text>
+<text x="0" y="436" font-size="15" fill="#646a8a">faster with gion</text>
+<text x="300" y="328" font-size="13" fill="#646a8a">Time</text>
+<text x="1000" y="328" font-size="13" font-weight="600" text-anchor="end" fill="#444ac2">7.1x faster</text>
+<text x="300" y="356" font-size="15" fill="#646a8a">gion</text>
+<rect x="380" y="338" width="620" height="26" rx="6" fill="#f1f2f6"/>
+<rect x="380" y="338" width="87.4" height="26" rx="6" fill="#444ac2"/>
+<text x="477.4" y="356" font-size="14" font-weight="600" fill="#1d202c">1.11 s</text>
+<text x="300" y="390" font-size="15" fill="#646a8a">git</text>
+<rect x="380" y="372" width="620" height="26" rx="6" fill="#f1f2f6"/>
+<rect x="380" y="372" width="620.0" height="26" rx="6" fill="#cacedc"/>
+<text x="990.0" y="390" font-size="14" font-weight="600" text-anchor="end" fill="#2f3449">7.87 s</text>
+<text x="300" y="434" font-size="13" fill="#646a8a">Disk used</text>
+<text x="1000" y="434" font-size="13" font-weight="600" text-anchor="end" fill="#444ac2">1.6x less</text>
+<text x="300" y="462" font-size="15" fill="#646a8a">gion</text>
+<rect x="380" y="444" width="620" height="26" rx="6" fill="#f1f2f6"/>
+<rect x="380" y="444" width="400.1" height="26" rx="6" fill="#444ac2"/>
+<text x="770.1" y="462" font-size="14" font-weight="600" text-anchor="end" fill="#ffffff">111 MB</text>
+<text x="300" y="496" font-size="15" fill="#646a8a">git</text>
+<rect x="380" y="478" width="620" height="26" rx="6" fill="#f1f2f6"/>
+<rect x="380" y="478" width="620.0" height="26" rx="6" fill="#cacedc"/>
+<text x="990.0" y="496" font-size="14" font-weight="600" text-anchor="end" fill="#2f3449">172 MB</text>
+<line x1="0" y1="544" x2="1000" y2="544" stroke="#e9ebf1"/>
+<text x="0" y="588" font-size="20" font-weight="600" fill="#1d202c">Read one file</text>
+<text x="-3" y="658" font-size="64" font-weight="500" letter-spacing="-2" fill="#444ac2">6x</text>
+<text x="0" y="688" font-size="15" fill="#646a8a">faster with gion</text>
+<text x="300" y="580" font-size="13" fill="#646a8a">Time</text>
+<text x="1000" y="580" font-size="13" font-weight="600" text-anchor="end" fill="#444ac2">6x faster</text>
+<text x="300" y="608" font-size="15" fill="#646a8a">gion</text>
+<rect x="380" y="590" width="620" height="26" rx="6" fill="#f1f2f6"/>
+<rect x="380" y="590" width="103.8" height="26" rx="6" fill="#444ac2"/>
+<text x="493.8" y="608" font-size="14" font-weight="600" fill="#1d202c">0.74 s</text>
+<text x="300" y="642" font-size="15" fill="#646a8a">git</text>
+<rect x="380" y="624" width="620" height="26" rx="6" fill="#f1f2f6"/>
+<rect x="380" y="624" width="620.0" height="26" rx="6" fill="#cacedc"/>
+<text x="990.0" y="642" font-size="14" font-weight="600" text-anchor="end" fill="#2f3449">4.42 s</text>
+<text x="300" y="686" font-size="13" fill="#646a8a">Disk used</text>
+<text x="1000" y="686" font-size="13" font-weight="600" text-anchor="end" fill="#444ac2">590x less</text>
+<text x="300" y="714" font-size="15" fill="#646a8a">gion</text>
+<rect x="380" y="696" width="620" height="26" rx="6" fill="#f1f2f6"/>
+<rect x="380" y="696" width="6.0" height="26" rx="6" fill="#444ac2"/>
+<text x="396.0" y="714" font-size="14" font-weight="600" fill="#1d202c">32 KB</text>
+<text x="300" y="748" font-size="15" fill="#646a8a">git</text>
+<rect x="380" y="730" width="620" height="26" rx="6" fill="#f1f2f6"/>
+<rect x="380" y="730" width="620.0" height="26" rx="6" fill="#cacedc"/>
+<text x="990.0" y="748" font-size="14" font-weight="600" text-anchor="end" fill="#2f3449">19 MB</text>
+</svg>
