@@ -4,6 +4,8 @@
 
 **Asymmetric git client for agents.** Skip the heavy network on large repos, get only what you need.
 
+![Read one file from chromium: gion 0.74 s, git 4.42 s](assets/perf-race.svg)
+
 <div class="bench" markdown>
 
 | Task | git | gion (warm) | Disk: git → gion |
