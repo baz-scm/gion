@@ -2,6 +2,8 @@
 
 Median of 3 runs, measured 2026-10-15 on an Apple M2 Pro (16 GB, macOS 26.6) over a home connection to github.com, gion v0.1.0-dev vs git 2.54. **Cold** means an empty gion cache; **warm** reuses it. Refs are never cached, so every gion run still makes at least one round trip. Each git baseline is the fastest git command that gets the same answer.
 
+![Read one file from chromium: gion 0.74 s, git 4.42 s](assets/perf-race.svg)
+
 | Task | gion, cold | gion, warm | git |
 | --- | --- | --- | --- |
 | Resolve `HEAD` (chromium) | 0.69 s | (not cached) | 0.93 s: `ls-remote` |

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="150" viewBox="0 0 720 150" role="img" aria-labelledby="t d">
+<title id="t">Read one file from chromium: gion 0.74 s, git 4.42 s</title>
+<desc id="d">Each ball crosses its lane once per run. gion's ball crosses about six times for every crossing of git's.</desc>
+<style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif; fill: #2f3449; }
+  .caption { font-size: 13px; fill: #646a8a; }
+  .label { font-size: 15px; font-weight: 600; }
+  .time { font-size: 15px; font-variant-numeric: tabular-nums; }
+  .track { stroke: #e9ebf1; stroke-width: 2; stroke-linecap: round; }
+  .gion { fill: #444ac2; }
+  .git { fill: #8d93b0; }
+  .ball { animation: run linear infinite alternate; }
+  .ball.gion { animation-duration: 0.74s; }
+  .ball.git { animation-duration: 4.42s; }
+  @keyframes run { from { transform: translateX(0); } to { transform: translateX(492px); } }
+  @media (prefers-color-scheme: dark) {
+    text { fill: #e9ebf1; }
+    .caption { fill: #8d93b0; }
+    .track { stroke: #2f3449; }
+    .gion { fill: #949feb; }
+    .git { fill: #646a8a; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ball { animation: none; }
+  }
+</style>
+<text class="caption" x="20" y="26">Read one file from chromium (66 GB, 510k files). One crossing = one run.</text>
+
+<text class="label" x="20" y="73">gion</text>
+<line class="track" x1="99" y1="68" x2="591" y2="68"/>
+<circle class="ball gion" cx="99" cy="68" r="9"/>
+<text class="time" x="700" y="73" text-anchor="end">0.74 s</text>
+
+<text class="label" x="20" y="123">git</text>
+<line class="track" x1="99" y1="118" x2="591" y2="118"/>
+<circle class="ball git" cx="99" cy="118" r="9"/>
+<text class="time" x="700" y="123" text-anchor="end">4.42 s</text>
+</svg>

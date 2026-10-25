@@ -17,6 +17,8 @@ Skip the heavy network on large repos, get only what you need.
 
 </div>
 
+<p align="center"><img src="docs/assets/perf-race.svg" alt="Read one file from chromium: gion 0.74 s, git 4.42 s" width="720"></p>
+
 | Task | git | gion (warm) | Disk: git → gion |
 | --- | --- | --- | --- |
 | Read one file | 4.42 s | **0.74 s** (6x) | 19 MB → **32 KB** (590x) |
