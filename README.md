@@ -7,6 +7,8 @@
 **Asymmetric git client for agents.**<br>
 Skip the heavy network on large repos, get only what you need.
 
+**[See it in action](#see-it-in-action)** · Works best with **[Baz](https://baz.ai)**
+
 [![CI](https://github.com/baz-scm/gion/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/baz-scm/gion/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/baz-scm/gion?include_prereleases&sort=semver)](https://github.com/baz-scm/gion/releases)
 [![Downloads](https://img.shields.io/github/downloads/baz-scm/gion/total)](https://github.com/baz-scm/gion/releases)

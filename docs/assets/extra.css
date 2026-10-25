@@ -88,6 +88,37 @@
   font-weight: 600;
   letter-spacing: -0.01em;
 }
+.gion-header-links {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.gion-header-link {
+  padding: 0.3rem 0.5rem;
+  color: var(--md-default-fg-color--light);
+}
+.gion-header-link:hover {
+  color: var(--md-accent-fg-color);
+}
+.gion-header-cta {
+  padding: 0.3rem 0.75rem;
+  border-radius: 8px;
+  background-color: var(--baz-purple);
+  color: var(--baz-n0);
+}
+.md-header .gion-header-cta:hover {
+  background-color: var(--baz-light-purple);
+  color: var(--baz-n950);
+}
+@media screen and (max-width: 44.984375em) {
+  .gion-header-link {
+    display: none;
+  }
+}
 .md-search__form {
   background-color: var(--baz-surface);
   border: 1px solid var(--baz-border);
