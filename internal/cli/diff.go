@@ -237,12 +237,13 @@ func (o diffOut) print(ctx context.Context, r *repo.Repo, ds []repo.FileDiff, co
 func add(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	md := fs.Bool("md", false, "markdown output")
+	noDeps := fs.Bool("no-deps", false, "don't add the paths that manifests under the new paths depend on")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(pos) == 0 {
-		return fmt.Errorf("usage: %s add <path>...  (inside a workspace)", prog)
+		return fmt.Errorf("usage: %s add <path>... [--no-deps]  (inside a workspace)", prog)
 	}
 	w, err := workspace.Find(".")
 	if err != nil {
@@ -253,26 +254,41 @@ func add(ctx context.Context, args []string) error {
 		return err
 	}
 	defer r.Close()
-	res, err := w.Add(ctx, r, pos)
+	var plan depPlan
+	if len(w.State.Paths) > 0 && !*noDeps {
+		base, _ := plumbing.FromHex(w.State.Base)
+		c, err := r.Commit(ctx, base)
+		if err != nil {
+			return err
+		}
+		if plan, err = planDeps(ctx, r, c.TreeHash, w.State.Paths, cleanPaths(pos)); err != nil {
+			return fmt.Errorf("finding local dependencies (--no-deps skips this): %w", err)
+		}
+	}
+	res, err := w.Add(ctx, r, append(pos, plan.paths()...))
 	if err != nil {
 		return err
 	}
 	if *md {
 		if len(res.Paths) == 0 {
 			fmt.Println("Already in the workspace; nothing to add.")
+			plan.print(true)
 			return nil
 		}
 		fmt.Printf("## Added to workspace\n\n- Paths: %s\n- %d files, %s, at `%s`\n", backticks(res.Paths), res.Files, humanBytes(res.Bytes), w.State.Base[:12])
 		if len(res.New) > 0 {
 			fmt.Printf("- Not in the repo yet (new files there will be committed): %s\n", backticks(res.New))
 		}
+		plan.print(true)
 		return nil
 	}
 	if len(res.Paths) == 0 {
 		fmt.Println("already in the workspace")
+		plan.print(false)
 		return nil
 	}
 	fmt.Printf("added %s: %d files, %s\n", strings.Join(res.Paths, ", "), res.Files, humanBytes(res.Bytes))
+	plan.print(false)
 	return nil
 }
 

@@ -16,7 +16,36 @@ gion commit -m "fix handler" --branch my-fix
 - Every file under each `--path` (a directory or a single file). Without `--path` you get the whole repo.
 - The files directly inside each **parent directory** of those paths, the root included. That's where tools look for config, so `.gitignore`, `pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, `conftest.py` and lint configs are there without naming them.
 
+- The **local dependencies** of those paths (see below).
+
 Edits to those parent-directory files are committed. New files you create next to them (scratch notes, logs) are not, unless you `gion add` them.
+
+## Local dependencies
+
+`clone --path` and `add` read the manifests under the paths you ask for and follow what they point at elsewhere in the repo, until no new paths turn up. Those paths join the workspace, and gion says why:
+
+```text
+$ gion clone baz-scm/baz ./bff --path bff
+cloned baz-scm/baz@3bb443190f80 into bff: 822 files, 5.7 MiB (bff) in 2.1s
++ shared/fixer  (bff/package.json: "@baz/shared-fixer": "file:../shared/fixer")
+```
+
+| Ecosystem | What gion follows |
+|---|---|
+| npm, pnpm, yarn, bun | `file:`, `link:` and `portal:` dependencies; dependencies on packages of the workspace (`workspaces` in `package.json`, or `pnpm-workspace.yaml`), whether written `workspace:*` or as a version |
+| Cargo | `path` dependencies (and `[patch]` / `[replace]` paths); every member of the crate's `[workspace]`, since cargo needs them all; `workspace = true` dependencies through `[workspace.dependencies]` |
+| Go | local `replace => ./…` directives; every `use` of the `go.work` above the module |
+| Python (uv) | `[tool.uv.sources]` paths; every member of the uv workspace the project belongs to |
+| Maven | `<modules>`; the parent POM (`<relativePath>`, default `../pom.xml`); dependencies on other modules of the same reactor |
+| Terraform | local module `source = "../…"` |
+| Helm | `repository: file://…` chart dependencies |
+| TypeScript | relative `extends` in `tsconfig*.json` (just that file) and project `references` |
+
+Root lockfiles and workspace roots sit in a parent directory, so they come along anyway. Manifests under `node_modules`, `vendor`, `testdata`, `test_data` and `fixtures` directories are skipped.
+
+If the dependencies together come to more than 5 GB, gion lists them instead of adding them, with the `gion add` command to take the ones you need. It measures with GitHub's API; on other hosts there's no cap. `--no-deps` on `clone` or `add` turns the whole thing off.
+
+**Gradle isn't followed.** Gradle builds are scripts (`settings.gradle(.kts)`, `build.gradle(.kts)`), so paths can be computed at build time and reading them as text would miss or invent dependencies. For a Gradle project, `gion add` the included builds and projects yourself; `settings.gradle(.kts)` at the root comes with every sparse clone.
 
 ## Widening
 

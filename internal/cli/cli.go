@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/filemode"
 
 	"github.com/baz-scm/gion/internal/cache"
@@ -33,11 +34,13 @@ commands:
           search file contents: scans locally when the candidate files are
           few (--max-files, default 5000), else asks GitHub code search for
           candidates and verifies them locally
-  clone   <remote> <dir> [--ref r] [--path p]... [--no-git]
+  clone   <remote> <dir> [--ref r] [--path p]... [--no-git] [--no-deps]
           light workspace: only the chosen paths (default all) at one
           commit, no history. it has a local .git that gion keeps in step,
           so pre-commit, git diff and git status work (--no-git: none).
-          Then, inside it:
+          paths their manifests depend on locally (file: packages, path
+          crates, go.work, ...) are added too, or listed if over 5 GB
+          (--no-deps: neither). Then, inside it:
   status                               changed files vs. the clone
                                        (honors .gitignore)
   diff    [<path>...] [--stat|--name-only|--name-status]
@@ -47,8 +50,9 @@ commands:
                                        the default branch) and push it. on a
                                        conflict, fix the marked files, then
                                        rebase --continue | --skip | --abort
-  add     <path>...                    widen the workspace with more paths
-                                       (a new path just joins the scope)
+  add     <path>... [--no-deps]        widen the workspace with more paths and
+                                       their local dependencies (a new path
+                                       just joins the scope)
   sync                                 pull upstream changes into files you
                                        haven't edited; stops on conflicts
   switch  <branch>                     move the workspace to an existing branch;
@@ -463,6 +467,7 @@ func clone(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("clone", flag.ContinueOnError)
 	ref := fs.String("ref", "HEAD", "rev to clone")
 	noGit := fs.Bool("no-git", false, "write no .git (by default gion keeps one in step for pre-commit, git diff and other git-based tools)")
+	noDeps := fs.Bool("no-deps", false, "don't add the paths that manifests under --path depend on")
 	md := fs.Bool("md", false, "markdown output")
 	var paths multiFlag
 	fs.Var(&paths, "path", "path to include (repeatable; default whole repo)")
@@ -471,7 +476,7 @@ func clone(ctx context.Context, args []string) error {
 		return err
 	}
 	if len(pos) != 2 {
-		return fmt.Errorf("usage: %s clone <remote> <dir> [--ref r] [--path p]... [--no-git]", prog)
+		return fmt.Errorf("usage: %s clone <remote> <dir> [--ref r] [--path p]... [--no-git] [--no-deps]", prog)
 	}
 	r, err := repo.Open(pos[0])
 	if err != nil {
@@ -480,7 +485,18 @@ func clone(ctx context.Context, args []string) error {
 	defer r.Close()
 
 	start := time.Now()
-	_, res, err := workspace.Clone(ctx, r, pos[1], *ref, paths, !*noGit)
+	var plan depPlan
+	var expand []workspace.Expand
+	if len(paths) > 0 && !*noDeps {
+		expand = append(expand, func(ctx context.Context, root plumbing.Hash, paths []string) ([]string, error) {
+			var err error
+			if plan, err = planDeps(ctx, r, root, nil, cleanPaths(paths)); err != nil {
+				return nil, fmt.Errorf("finding local dependencies (--no-deps skips this): %w", err)
+			}
+			return plan.paths(), nil
+		})
+	}
+	_, res, err := workspace.Clone(ctx, r, pos[1], *ref, paths, !*noGit, expand...)
 	if err != nil {
 		return err
 	}
@@ -498,9 +514,11 @@ func clone(ctx context.Context, args []string) error {
 		} else {
 			fmt.Printf("- No history and no `.git`: use `%s status` and `%s commit` inside it.\n", prog, prog)
 		}
+		plan.print(true)
 		return nil
 	}
 	fmt.Printf("cloned %s@%s into %s: %d files, %s (%s) in %s\n", pos[0], res.Commit.String()[:12], pos[1], res.Files, humanBytes(res.Bytes), scope, elapsed)
+	plan.print(false)
 	return nil
 }
 

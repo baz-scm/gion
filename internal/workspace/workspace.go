@@ -113,15 +113,27 @@ type CloneResult struct {
 	Bytes  int64
 }
 
+// Expand returns more paths to clone alongside paths, read from the commit
+// whose root tree is root.
+type Expand func(ctx context.Context, root plumbing.Hash, paths []string) ([]string, error)
+
 // Clone materializes paths (all if empty) of ref into dir. With git, dir also
-// gets a .git for git-based tools (see writeGit).
-func Clone(ctx context.Context, r *repo.Repo, dir, ref string, paths []string, git bool) (*Workspace, CloneResult, error) {
+// gets a .git for git-based tools (see writeGit). expand, if given, adds
+// paths once ref is resolved.
+func Clone(ctx context.Context, r *repo.Repo, dir, ref string, paths []string, git bool, expand ...Expand) (*Workspace, CloneResult, error) {
 	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
 		return nil, CloneResult{}, fmt.Errorf("%s exists and is not empty", dir)
 	}
 	commit, root, err := r.RootTree(ctx, ref)
 	if err != nil {
 		return nil, CloneResult{}, err
+	}
+	for _, e := range expand {
+		more, err := e(ctx, root, paths)
+		if err != nil {
+			return nil, CloneResult{}, err
+		}
+		paths = append(append([]string{}, paths...), more...)
 	}
 
 	// Resolve each scope path to a tree (walk it) or a single file.

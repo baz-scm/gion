@@ -48,3 +48,20 @@ func TestSkillInstall(t *testing.T) {
 		t.Fatalf("agentGuide = %q", agentGuide())
 	}
 }
+
+func TestCommonDir(t *testing.T) {
+	for _, c := range []struct {
+		paths []string
+		want  string
+	}{
+		{[]string{"a/b/c", "a/b/d"}, "a/b"},
+		{[]string{"a/b/c", "a/x"}, "a"},
+		{[]string{"a/b", "c"}, ""},
+		{[]string{"a/b/c"}, "a/b"},
+		{[]string{"a/b", "a/b/c"}, "a/b"},
+	} {
+		if got := commonDir(c.paths); got != c.want {
+			t.Errorf("commonDir(%v) = %q, want %q", c.paths, got, c.want)
+		}
+	}
+}

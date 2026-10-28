@@ -29,6 +29,9 @@ type Repo struct {
 	Remote string
 	Cache  *cache.Store
 	sess   *wire.Session
+	// fullTrees are trees fetched with everything under them by this Repo,
+	// so EnsureTrees doesn't fetch them again.
+	fullTrees map[plumbing.Hash]bool
 }
 
 // Open prepares a Repo. The network session is opened lazily.
@@ -230,13 +233,29 @@ func (r *Repo) fetch(ctx context.Context, wants []plumbing.Hash, filter packp.Fi
 
 // EnsureTrees fetches every tree under the given trees in one round trip
 // per call (filter blob:none), so whole-directory walks need no further
-// requests. Trees already cached are not skipped: the server can't be told
-// which subtrees we have without commit history.
+// requests. Trees already cached are not skipped, since the server can't be
+// told which subtrees we have without commit history, except roots this
+// Repo already fetched that way.
 func (r *Repo) EnsureTrees(ctx context.Context, roots ...plumbing.Hash) error {
-	if len(roots) == 0 {
+	var todo []plumbing.Hash
+	for _, h := range roots {
+		if !r.fullTrees[h] {
+			todo = append(todo, h)
+		}
+	}
+	if len(todo) == 0 {
 		return nil
 	}
-	return r.fetch(ctx, roots, wire.FilterNoBlobs)
+	if err := r.fetch(ctx, todo, wire.FilterNoBlobs); err != nil {
+		return err
+	}
+	if r.fullTrees == nil {
+		r.fullTrees = map[plumbing.Hash]bool{}
+	}
+	for _, h := range todo {
+		r.fullTrees[h] = true
+	}
+	return nil
 }
 
 // FileEntry is one file found by Walk.

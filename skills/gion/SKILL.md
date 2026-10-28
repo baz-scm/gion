@@ -44,7 +44,7 @@ gion commit owner/repo -m "msg" --branch my-fix src/a.go=./a.go --rm src/old.go 
 
 `--branch b` creates `b` from `HEAD` (`--onto <rev>` for another base). `--to b` updates an existing branch.
 
-**Real coding: a sparse workspace.** Clone only the directories the task touches. The files in their parent directories (root included) come along, so `.gitignore`, `pyproject.toml`, `package.json`, `go.mod`, `conftest.py` and lint configs are there; edits to them are committed, new files next to them are not unless you `gion add` them.
+**Real coding: a sparse workspace.** Clone only the directories the task touches. The files in their parent directories (root included) come along, so `.gitignore`, `pyproject.toml`, `package.json`, `go.mod`, `conftest.py` and lint configs are there; edits to them are committed, new files next to them are not unless you `gion add` them. `clone` and `add` also bring the paths the manifests there depend on locally (`file:` packages, path crates, `go.work` modules, uv and cargo workspace members, Maven modules, Terraform modules, Helm `file://` charts, tsconfig `extends`/`references`) and list them with the reason; over 5 GB they're only listed. Gradle isn't followed: `gion add` what its build includes. `--no-deps` turns this off.
 
 ```sh
 gion clone owner/repo ./ws --path src/api --path go.mod --md

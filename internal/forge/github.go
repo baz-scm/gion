@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/baz-scm/gion/internal/auth"
@@ -345,4 +346,61 @@ func RenameBranch(ctx context.Context, remote, from, to string) error {
 		return fmt.Errorf("github: renaming %s to %s: %s (%s)", from, to, out.Message, resp.Status)
 	}
 	return fmt.Errorf("github: renaming %s to %s: %s", from, to, resp.Status)
+}
+
+// TreeSize adds up the sizes of the files under tree sha, as GitHub's trees
+// API reports them. truncated means GitHub listed only part of the tree
+// (about 100,000 entries), so the real size is larger.
+func TreeSize(ctx context.Context, remote, sha string) (size int64, truncated bool, err error) {
+	repo, ok := GitHubRepo(remote)
+	if !ok {
+		return 0, false, ErrUnsupported
+	}
+	var out struct {
+		Tree []struct {
+			Type string `json:"type"`
+			Size int64  `json:"size"`
+		} `json:"tree"`
+		Truncated bool `json:"truncated"`
+	}
+	if err := githubGet(ctx, "/repos/"+repo+"/git/trees/"+sha+"?recursive=1", &out); err != nil {
+		return 0, false, err
+	}
+	for _, e := range out.Tree {
+		if e.Type == "blob" {
+			size += e.Size
+		}
+	}
+	return size, out.Truncated, nil
+}
+
+// TreeSizes adds up TreeSize over several trees, a few requests at a time.
+func TreeSizes(ctx context.Context, remote string, shas []string) (size int64, truncated bool, err error) {
+	type result struct {
+		size      int64
+		truncated bool
+		err       error
+	}
+	results := make([]result, len(shas))
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	for i, sha := range shas {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			s, t, err := TreeSize(ctx, remote, sha)
+			results[i] = result{s, t, err}
+		}()
+	}
+	wg.Wait()
+	for _, r := range results {
+		if r.err != nil {
+			return 0, false, r.err
+		}
+		size += r.size
+		truncated = truncated || r.truncated
+	}
+	return size, truncated, nil
 }
