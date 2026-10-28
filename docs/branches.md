@@ -20,6 +20,16 @@ gion commit -m "try" --branch my-idea         # or create a new one
 
 `switch` rewrites only the files that differ between the two branches and keeps your edits; if the target branch changed a file you edited, it changes nothing and lists it.
 
+## Renaming a branch
+
+```sh
+gion branch rename better-name                     # in a workspace: its branch
+gion branch rename my-idea better-name             # in a workspace: any branch
+gion branch rename baz-scm/baz my-idea better-name # no workspace needed
+```
+
+A workspace that pushes to (or syncs from) the old name follows the new one. On GitHub the rename goes through its API, so open pull requests and branch protection move to the new name. Elsewhere it's one atomic push that creates the new branch at the old one's tip and deletes the old one; the default branch can't be renamed that way.
+
 ## Compare-and-swap pushes
 
 gion never force-pushes a commit. A push says "move this branch from the commit I saw to my new one", and the server refuses if the branch moved. When that happens:

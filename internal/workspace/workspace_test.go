@@ -583,3 +583,46 @@ func mustStatus(t *testing.T, w *Workspace) []FileChange {
 	}
 	return cs
 }
+
+func TestCommitAfterBranchRename(t *testing.T) {
+	t.Setenv("GIT_AUTHOR_NAME", "gion")
+	t.Setenv("GIT_AUTHOR_EMAIL", "gion@test")
+	remote, clone := testgit.Serve(t)
+	r := openRepo(t, remote)
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(ctx, r, dir, "main", nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, "a.txt", "first\n")
+	if _, err := w.Commit(ctx, r, "first", "old-name", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := r.RenameBranch(ctx, "old-name", "new-name"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := w.BranchRenamed("old-name", "new-name"); err != nil || !ok {
+		t.Fatalf("BranchRenamed = %v, %v", ok, err)
+	}
+	if ok, _ := w.BranchRenamed("unrelated", "x"); ok {
+		t.Error("BranchRenamed changed a workspace that didn't follow the branch")
+	}
+
+	// The workspace follows the new name: sync works and commits land there.
+	w2, _ := Find(dir)
+	if _, err := w2.Sync(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, "a.txt", "second\n")
+	if _, err := w2.Commit(ctx, r, "second", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := testgit.Run(t, clone, "ls-remote", "origin", "refs/heads/new-name"); !strings.Contains(got, w2.State.Base) {
+		t.Errorf("new-name = %q, want the workspace's commit %s", got, w2.State.Base)
+	}
+	if got := testgit.Run(t, dir, "rev-parse", "--abbrev-ref", "HEAD"); got != "new-name" {
+		t.Errorf("local .git branch = %q, want new-name", got)
+	}
+}

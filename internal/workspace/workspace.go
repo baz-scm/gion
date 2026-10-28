@@ -752,6 +752,24 @@ func (w *Workspace) Switch(ctx context.Context, r *repo.Repo, branch string) (Sy
 	return res, w.save()
 }
 
+// BranchRenamed points the workspace at branch to if it followed from (for
+// commits or for sync), after from was renamed upstream. It reports whether
+// anything changed.
+func (w *Workspace) BranchRenamed(from, to string) (bool, error) {
+	from = strings.TrimPrefix(from, "refs/heads/")
+	changed := false
+	if w.State.Branch == from {
+		w.State.Branch, changed = to, true
+	}
+	if strings.TrimPrefix(w.State.Ref, "refs/heads/") == from {
+		w.State.Ref, changed = to, true
+	}
+	if !changed {
+		return false, nil
+	}
+	return true, w.save()
+}
+
 // Diff returns the workspace's pending changes as file diffs against its
 // base, plus the on-disk contents of new and modified files keyed by blob id
 // (for repo.WritePatch).

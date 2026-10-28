@@ -61,6 +61,10 @@ commands:
           which commit last changed each line (GitHub GraphQL, or locally)
   rebase  <remote> <branch> [--onto <rev>]
           the same without a workspace; stops (pushing nothing) on conflicts
+  branch  rename <remote> <old> <new>
+          rename a branch (GitHub keeps its open PRs). in a workspace:
+          branch rename [<old>] <new>, <old> defaulting to the workspace's
+          branch, which then follows the new name
   tag     <remote> <name> [<rev>] [-m <msg>]
           create a tag on the remote (annotated with -m); never moves one
   gc      [--max SIZE]                 trim the cache (~/.gion) now and show its
@@ -88,6 +92,12 @@ flags: --md  markdown output for agents
 ```text
   -L string              only lines a,b (1-based, inclusive)
   --local                compute locally even when the forge could answer
+  --md                   markdown output
+```
+
+## `gion branch`
+
+```text
   --md                   markdown output
 ```
 

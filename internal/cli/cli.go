@@ -77,6 +77,10 @@ commands:
           which commit last changed each line (GitHub GraphQL, or locally)
   rebase  <remote> <branch> [--onto <rev>]
           the same without a workspace; stops (pushing nothing) on conflicts
+  branch  rename <remote> <old> <new>
+          rename a branch (GitHub keeps its open PRs). in a workspace:
+          branch rename [<old>] <new>, <old> defaulting to the workspace's
+          branch, which then follows the new name
   tag     <remote> <name> [<rev>] [-m <msg>]
           create a tag on the remote (annotated with -m); never moves one
   gc      [--max SIZE]                 trim the cache (~/.gion) now and show its
@@ -128,6 +132,7 @@ func Main(invokedAs string, args []string) int {
 		"log":     log,
 		"blame":   blame,
 		"rebase":  rebase,
+		"branch":  branch,
 	}
 	name := args[0]
 	if name == "-v" || name == "-version" || name == "--version" {

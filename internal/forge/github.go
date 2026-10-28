@@ -300,3 +300,49 @@ func Blame(ctx context.Context, remote, sha, path string) ([]BlameRange, error) 
 	}
 	return rs, nil
 }
+
+// RenameBranch renames a branch with GitHub's API, which retargets open pull
+// requests and carries over branch protection; deleting and recreating the
+// branch would close those pull requests instead.
+func RenameBranch(ctx context.Context, remote, from, to string) error {
+	repo, ok := GitHubRepo(remote)
+	if !ok {
+		return ErrUnsupported
+	}
+	api, _ := url.Parse("https://github.com/")
+	cred, err := auth.ForURL(ctx, api)
+	if err != nil {
+		return err
+	}
+	body, _ := json.Marshal(map[string]string{"new_name": to})
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.github.com/repos/"+repo+"/branches/"+url.PathEscape(from)+"/rename", strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Authorization", "Bearer "+cred.Password)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusCreated {
+		return nil
+	}
+	var out struct {
+		Message string `json:"message"`
+	}
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&out)
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return fmt.Errorf("github: no branch %s on github.com/%s (or no access)", from, repo)
+	case http.StatusForbidden:
+		return fmt.Errorf("github: renaming %s needs write access to github.com/%s (%s)", from, repo, out.Message)
+	case http.StatusUnprocessableEntity:
+		return fmt.Errorf("github: can't rename %s to %s: the name is taken or invalid (%s)", from, to, out.Message)
+	}
+	if out.Message != "" {
+		return fmt.Errorf("github: renaming %s to %s: %s (%s)", from, to, out.Message, resp.Status)
+	}
+	return fmt.Errorf("github: renaming %s to %s: %s", from, to, resp.Status)
+}

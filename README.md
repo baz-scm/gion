@@ -98,7 +98,7 @@ gion borrows your `gh` login, `GITHUB_TOKEN` or git credential helper; public re
 | --- | --- | --- |
 | `cat`, `ls`, `ls-refs` | `clone --path`, `add` | `commit` (workspace or remote) |
 | `find`, `grep` (whole repo) | `status`, `diff` | `rebase` (with conflict resolution) |
-| `diff`, `log`, `blame` | `sync`, `switch` | `tag` |
+| `diff`, `log`, `blame` | `sync`, `switch` | `tag`, `branch rename` |
 
 Every command takes `--md` for agent-friendly output and `-h` for its flags. See the [command reference](https://baz-scm.github.io/gion/reference/).
 

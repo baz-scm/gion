@@ -57,6 +57,7 @@ gion commit -m "msg" --branch my-fix --md      # first push creates the branch
 gion commit -m "more" --md                     # later pushes update it
 gion sync --md                   # pull upstream changes into unedited files
 gion switch other-branch --md    # move to an existing branch, keeping edits
+gion branch rename better-name --md  # rename the workspace's branch (GitHub keeps its PRs)
 gion log --md                    # history of what's checked out; gion blame <file> --md
 gion rebase --md                 # replay your branch onto the default branch and push it
 ```
