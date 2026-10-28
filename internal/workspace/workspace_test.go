@@ -333,7 +333,7 @@ func TestSyncAdoptsIdenticalEdits(t *testing.T) {
 	remote, clone := testgit.Serve(t)
 	r := openRepo(t, remote)
 	dir := filepath.Join(t.TempDir(), "ws")
-	w, _, err := Clone(context.Background(), r, dir, "main", nil, false)
+	w, _, err := Clone(context.Background(), r, dir, "main", nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,13 +341,23 @@ func TestSyncAdoptsIdenticalEdits(t *testing.T) {
 	// Local edits that upstream made too (say, pushed from elsewhere) are
 	// clean after the sync.
 	write(t, dir, "a.txt", "same\n")
+	write(t, dir, "n/new.txt", "new\n")
 	os.Remove(filepath.Join(dir, "b.txt"))
-	pushUpstream(t, clone, "main", map[string]string{"a.txt": "same\n", "b.txt": ""})
+	pushUpstream(t, clone, "main", map[string]string{"a.txt": "same\n", "b.txt": "", "n/new.txt": "new\n"})
 	if _, err := w.Sync(context.Background(), r); err != nil {
 		t.Fatal(err)
 	}
 	if cs := mustStatus(t, w); len(cs) != 0 {
 		t.Errorf("status after sync = %v, want clean", kinds(cs))
+	}
+	// git agrees, and restores the new upstream version (#6).
+	if out := testgit.Run(t, dir, "status", "--porcelain"); out != "" {
+		t.Errorf("git status after sync:\n%s", out)
+	}
+	write(t, dir, "a.txt", "scratch\n")
+	testgit.Run(t, dir, "checkout", "--", "a.txt")
+	if got := read(t, dir, "a.txt"); got != "same\n" {
+		t.Errorf("git checkout restored %q, want upstream's", got)
 	}
 }
 
