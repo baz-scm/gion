@@ -2,7 +2,7 @@
 
 <sub>*gion* (**GI-un**, "gi" as in **gi**t) = **g**it + sc**ion**</sub>
 
-**Asymmetric git client for agents.** Skip the heavy network on large repos, get only what you need.
+**The fastest git client for agents.** Skip the heavy network on large repos, get only what you need.
 
 ![Grep all 510k files of chromium: gion 3.49 s, git 203 s (58x faster)](assets/perf-race.svg)
 

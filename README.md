@@ -4,7 +4,7 @@
 
 <sub>*gion* (**GI-un**, "gi" as in **gi**t) = **g**it + sc**ion**</sub>
 
-**Asymmetric git client for agents.**<br>
+**The fastest git client for agents.**<br>
 Skip the heavy network on large repos, get only what you need.
 
 **[See it in action](#see-it-in-action)** · Works best with **[Baz](https://baz.ai)**
