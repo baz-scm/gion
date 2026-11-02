@@ -28,7 +28,9 @@ func Version() string {
 }
 
 func versionCmd(_ context.Context, args []string) error {
-	if _, err := parse(flag.NewFlagSet("version", flag.ContinueOnError), args); err != nil {
+	fs := flag.NewFlagSet("version", flag.ContinueOnError)
+	fs.Bool("md", false, "accepted for uniformity; output is one plain line")
+	if _, err := parse(fs, args); err != nil {
 		return err
 	}
 	c := buildCommit

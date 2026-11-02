@@ -108,7 +108,7 @@ flags: --md  markdown output for agents
 ## `gion cat`
 
 ```text
-  (no flags)
+  --md                   accepted for uniformity; output is always the raw bytes
 ```
 
 ## `gion clone`
@@ -190,6 +190,7 @@ flags: --md  markdown output for agents
 ## `gion ls-refs`
 
 ```text
+  --md                   accepted for uniformity; output is always git ls-remote's format
   --prefix value         ref prefix to list (repeatable; default HEAD, refs/heads/)
   --time                 print elapsed time to stderr
 ```
@@ -239,5 +240,5 @@ flags: --md  markdown output for agents
 ## `gion version`
 
 ```text
-  (no flags)
+  --md                   accepted for uniformity; output is one plain line
 ```

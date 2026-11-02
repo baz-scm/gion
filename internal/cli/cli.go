@@ -116,28 +116,7 @@ func Main(invokedAs string, args []string) int {
 		return 2
 	}
 
-	cmds := map[string]func(context.Context, []string) error{
-		"ls-refs": lsRefs,
-		"cat":     cat,
-		"ls":      ls,
-		"commit":  commit,
-		"clone":   clone,
-		"status":  status,
-		"sync":    sync,
-		"version": versionCmd,
-		"find":    find,
-		"grep":    grep,
-		"tag":     tag,
-		"gc":      gc,
-		"switch":  switchCmd,
-		"diff":    diff,
-		"add":     add,
-		"skill":   skill,
-		"log":     log,
-		"blame":   blame,
-		"rebase":  rebase,
-		"branch":  branch,
-	}
+	cmds := commands()
 	name := args[0]
 	if name == "-v" || name == "-version" || name == "--version" {
 		name = "version"
@@ -173,6 +152,32 @@ func Main(invokedAs string, args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// commands maps each subcommand name to its implementation.
+func commands() map[string]func(context.Context, []string) error {
+	return map[string]func(context.Context, []string) error{
+		"ls-refs": lsRefs,
+		"cat":     cat,
+		"ls":      ls,
+		"commit":  commit,
+		"clone":   clone,
+		"status":  status,
+		"sync":    sync,
+		"version": versionCmd,
+		"find":    find,
+		"grep":    grep,
+		"tag":     tag,
+		"gc":      gc,
+		"switch":  switchCmd,
+		"diff":    diff,
+		"add":     add,
+		"skill":   skill,
+		"log":     log,
+		"blame":   blame,
+		"rebase":  rebase,
+		"branch":  branch,
+	}
 }
 
 type multiFlag []string
@@ -213,6 +218,7 @@ func lsRefs(ctx context.Context, args []string) error {
 	var prefixes multiFlag
 	fs.Var(&prefixes, "prefix", "ref prefix to list (repeatable; default HEAD, refs/heads/)")
 	timing := fs.Bool("time", false, "print elapsed time to stderr")
+	fs.Bool("md", false, "accepted for uniformity; output is always git ls-remote's format")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -256,6 +262,7 @@ func lsRefs(ctx context.Context, args []string) error {
 // cat always prints raw bytes: wrapping file contents would corrupt them.
 func cat(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("cat", flag.ContinueOnError)
+	fs.Bool("md", false, "accepted for uniformity; output is always the raw bytes")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
