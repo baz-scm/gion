@@ -18,7 +18,7 @@ gion commit -m "hotfix" --to main             # or onto another existing branch
 gion commit -m "try" --branch my-idea         # or create a new one
 ```
 
-`switch` rewrites only the files that differ between the two branches and keeps your edits; if the target branch changed a file you edited, it changes nothing and lists it.
+`switch` rewrites only the files that differ between the two branches and keeps your edits; if the target branch changed a file you edited, it changes nothing and lists it. After your branch merges and is deleted, `gion switch main` is how you follow `main` again (`gion sync` points you there).
 
 ## Renaming a branch
 

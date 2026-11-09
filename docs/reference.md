@@ -40,6 +40,9 @@ commands:
                                        haven't edited; stops on conflicts
   switch  <branch>                     move the workspace to an existing branch;
                                        keeps your edits, commits go there
+  restore <path>...                    discard your edits to those paths: edited
+                                       and deleted files go back to the clone,
+                                       new files are removed ("." for all)
   commit  -m <msg> [--branch b | --to b] [--no-verify]
                                        push workspace changes. default: first
                                        commit creates a branch, later ones
@@ -203,6 +206,12 @@ flags: --md  markdown output for agents
   --md                   markdown output
   --onto string          remote mode: rev to rebase onto (default: the default branch)
   --skip                 drop the stopped commit
+```
+
+## `gion restore`
+
+```text
+  --md                   markdown output
 ```
 
 ## `gion skill`

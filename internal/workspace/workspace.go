@@ -594,6 +594,11 @@ func (w *Workspace) Commit(ctx context.Context, r *repo.Repo, msg, branch, to st
 // ErrLocalConflict means upstream changed files that also have local edits.
 var ErrLocalConflict = errors.New("local changes conflict with upstream")
 
+// ErrBranchGone means the workspace's branch was deleted upstream, usually
+// after its pull request merged. Switching to the branch it merged into
+// brings the workspace back in step.
+var ErrBranchGone = errors.New("the workspace's branch no longer exists upstream")
+
 // SyncResult describes what sync changed on disk.
 type SyncResult struct {
 	From, To plumbing.Hash
@@ -613,6 +618,9 @@ func (w *Workspace) Sync(ctx context.Context, r *repo.Repo) (SyncResult, error) 
 		target = "refs/heads/" + w.State.Branch
 	}
 	tip, err := r.Resolve(ctx, target)
+	if errors.Is(err, repo.ErrNotExist) && w.State.Branch != "" {
+		return SyncResult{}, fmt.Errorf("%w: %s", ErrBranchGone, w.State.Branch)
+	}
 	if err != nil {
 		return SyncResult{}, err
 	}
@@ -723,6 +731,59 @@ func (w *Workspace) applyUpstream(ctx context.Context, r *repo.Repo, from, to pl
 	sort.Strings(res.Updated)
 	sort.Strings(res.Removed)
 	return res, nil
+}
+
+// Restore discards local edits to paths (every edit if paths holds ""):
+// edited and deleted files go back to the workspace's commit, and new files
+// are removed. It returns the paths it changed.
+func (w *Workspace) Restore(ctx context.Context, r *repo.Repo, paths []string) ([]FileChange, error) {
+	if err := w.guardRebase(); err != nil {
+		return nil, err
+	}
+	changes, err := w.Status()
+	if err != nil {
+		return nil, err
+	}
+	all := false
+	for _, p := range paths {
+		all = all || p == ""
+	}
+	var picked []FileChange
+	var blobs []plumbing.Hash
+	for _, c := range changes {
+		if !all && !covered(paths, c.Path) {
+			continue
+		}
+		picked = append(picked, c)
+		if c.Kind != Added {
+			blobs = append(blobs, plumbing.NewHash(w.State.Files[c.Path].OID))
+		}
+	}
+	if err := r.Ensure(ctx, blobs...); err != nil {
+		return nil, err
+	}
+	for _, c := range picked {
+		if c.Kind == Added {
+			if err := os.Remove(w.abs(c.Path)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return nil, err
+			}
+			w.pruneEmptyDirs(c.Path)
+			continue
+		}
+		st := w.State.Files[c.Path]
+		oid, mode := plumbing.NewHash(st.OID), filemode.FileMode(st.Mode)
+		data, err := r.Blob(ctx, oid)
+		if err != nil {
+			return nil, err
+		}
+		if err := w.writeFile(c.Path, mode, data); err != nil {
+			return nil, err
+		}
+		if err := w.record(c.Path, oid, mode); err != nil {
+			return nil, err
+		}
+	}
+	return picked, w.save()
 }
 
 // pruneEmptyDirs removes now-empty parent directories of p, up to the root.

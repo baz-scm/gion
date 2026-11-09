@@ -626,3 +626,89 @@ func TestCommitAfterBranchRename(t *testing.T) {
 		t.Errorf("local .git branch = %q, want new-name", got)
 	}
 }
+
+// A pushed branch that's squash-merged and deleted: commit left the files
+// clean, sync names the gone branch, and switching to main fast-forwards
+// them even though main changed them again after the merge.
+func TestSyncAfterBranchMergedAndDeleted(t *testing.T) {
+	t.Setenv("GIT_AUTHOR_NAME", "gion")
+	t.Setenv("GIT_AUTHOR_EMAIL", "gion@test")
+	remote, clone := testgit.Serve(t)
+	r := openRepo(t, remote)
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(ctx, r, dir, "main", nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, "a.txt", "pushed\n")
+	write(t, dir, "new.txt", "added\n")
+	if _, err := w.Commit(ctx, r, "m", "feature", ""); err != nil {
+		t.Fatal(err)
+	}
+	if cs := mustStatus(t, w); len(cs) != 0 {
+		t.Fatalf("status after commit = %v, want clean", kinds(cs))
+	}
+
+	pushUpstream(t, clone, "main", map[string]string{"a.txt": "pushed\n", "new.txt": "added\n"}) // squash merge
+	pushUpstream(t, clone, "main", map[string]string{"a.txt": "changed again\n"})
+	testgit.Run(t, clone, "push", "-q", "origin", ":feature")
+
+	if _, err := w.Sync(ctx, r); !errors.Is(err, ErrBranchGone) || !strings.Contains(err.Error(), "feature") {
+		t.Fatalf("sync err = %v, want ErrBranchGone naming feature", err)
+	}
+	if _, err := w.Switch(ctx, r, "main"); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, dir, "a.txt"); got != "changed again\n" {
+		t.Errorf("a.txt = %q", got)
+	}
+	if cs := mustStatus(t, w); len(cs) != 0 {
+		t.Errorf("status after switch = %v, want clean", kinds(cs))
+	}
+}
+
+func TestRestore(t *testing.T) {
+	remote, _ := testgit.Serve(t)
+	r := openRepo(t, remote)
+	ctx := context.Background()
+	dir := filepath.Join(t.TempDir(), "ws")
+	w, _, err := Clone(ctx, r, dir, "main", nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := read(t, dir, "a.txt"), read(t, dir, "b.txt")
+	write(t, dir, "a.txt", "edit\n")
+	write(t, dir, "n/new.txt", "new\n")
+	if err := os.Remove(filepath.Join(dir, "b.txt")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, "d/e.txt", "kept\n")
+
+	got, err := w.Restore(ctx, r, []string{"a.txt", "b.txt", "n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k := kinds(got); len(k) != 3 || k["a.txt"] != Modified || k["b.txt"] != Deleted || k["n/new.txt"] != Added {
+		t.Errorf("restored = %v", k)
+	}
+	if read(t, dir, "a.txt") != a || read(t, dir, "b.txt") != b {
+		t.Error("contents not restored")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "n")); !os.IsNotExist(err) {
+		t.Error("new file or its empty dir left behind")
+	}
+	if k := kinds(mustStatus(t, w)); len(k) != 1 || k["d/e.txt"] != Modified {
+		t.Errorf("status = %v, want only d/e.txt", k)
+	}
+	if out := testgit.Run(t, dir, "status", "--porcelain"); out != "M d/e.txt" {
+		t.Errorf("git status = %q", out)
+	}
+
+	if _, err := w.Restore(ctx, r, []string{""}); err != nil {
+		t.Fatal(err)
+	}
+	if k := kinds(mustStatus(t, w)); len(k) != 0 {
+		t.Errorf("status after restoring all = %v", k)
+	}
+}

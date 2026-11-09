@@ -57,10 +57,13 @@ gion commit -m "msg" --branch my-fix --md      # first push creates the branch
 gion commit -m "more" --md                     # later pushes update it
 gion sync --md                   # pull upstream changes into unedited files
 gion switch other-branch --md    # move to an existing branch, keeping edits
+gion restore src/api/x.go --md   # discard edits to a path ("." for all; new files are removed)
 gion branch rename better-name --md  # rename the workspace's branch (GitHub keeps its PRs)
 gion log --md                    # history of what's checked out; gion blame <file> --md
 gion rebase --md                 # replay your branch onto the default branch and push it
 ```
+
+**After your PR merges.** Pushed files are already clean. If the branch was deleted, `gion sync` says so; run `gion switch main` (or the branch it merged into) to follow that branch from then on.
 
 **pre-commit and git-based checks.** A workspace has a local `.git` snapshot that gion keeps in step, so `git diff`, `git status` and pre-commit work. `git rev-parse HEAD` (or `GION_HEAD`) is the upstream commit, sparse workspace or not. If the repo has a `.pre-commit-config.yaml`, run `pre-commit install` once; then `gion commit` runs the hooks on all your changes before pushing, and pushes nothing if they fail (formatters leave their fixes on disk; commit again). `pre-commit run --all-files` checks everything. Push with `gion commit`, never `git commit` / `git push`.
 

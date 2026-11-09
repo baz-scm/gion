@@ -84,6 +84,10 @@ Identity comes from git's usual variables (`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`
 
 `gion sync` brings unedited files up to date with the branch. Files you've edited are kept; if upstream changed them too, nothing is written and the conflicting paths are listed. To replay your commits onto a newer base, use [`gion rebase`](branches.md#rebase).
 
+`gion restore <path>...` discards your edits to those paths: edited and deleted files go back to the workspace's commit, and new files are removed. `gion restore .` discards every edit.
+
+Once your pull request merges and its branch is deleted, `gion sync` says the branch is gone. `gion switch main` (or whichever branch it merged into) moves the workspace there; the files you pushed aren't local edits any more, so it goes through even if `main` changed them again since.
+
 <video class="demo" src="../assets/demos/sync.mp4" autoplay loop muted playsinline></video>
 
 ## pre-commit and other git-based tools

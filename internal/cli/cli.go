@@ -57,6 +57,9 @@ commands:
                                        haven't edited; stops on conflicts
   switch  <branch>                     move the workspace to an existing branch;
                                        keeps your edits, commits go there
+  restore <path>...                    discard your edits to those paths: edited
+                                       and deleted files go back to the clone,
+                                       new files are removed ("." for all)
   commit  -m <msg> [--branch b | --to b] [--no-verify]
                                        push workspace changes. default: first
                                        commit creates a branch, later ones
@@ -170,6 +173,7 @@ func commands() map[string]func(context.Context, []string) error {
 		"tag":     tag,
 		"gc":      gc,
 		"switch":  switchCmd,
+		"restore": restore,
 		"diff":    diff,
 		"add":     add,
 		"skill":   skill,
@@ -645,7 +649,14 @@ func sync(ctx context.Context, args []string) error {
 	res, err := w.Sync(ctx, r)
 	if err != nil {
 		if errors.Is(err, workspace.ErrLocalConflict) {
-			return fmt.Errorf("%w\nnothing was changed; commit or undo those edits, then sync again", err)
+			return fmt.Errorf("%w\nnothing was changed; commit or undo those edits (%s restore <path>), then sync again", err, prog)
+		}
+		if errors.Is(err, workspace.ErrBranchGone) {
+			into := "<branch>"
+			if d, derr := r.DefaultBranch(ctx); derr == nil {
+				into = d
+			}
+			return fmt.Errorf("%w (merged?)\nto follow the branch it merged into: %s switch %s", err, prog, into)
 		}
 		return err
 	}
@@ -676,6 +687,62 @@ func sync(ctx context.Context, args []string) error {
 	}
 	for _, p := range res.Removed {
 		fmt.Printf("D\t%s\n", p)
+	}
+	return nil
+}
+
+func restore(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
+	md := fs.Bool("md", false, "markdown output")
+	pos, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) == 0 {
+		return fmt.Errorf("usage: %s restore <path>... (\".\" for every edit)", prog)
+	}
+	w, err := workspace.Find(".")
+	if err != nil {
+		return err
+	}
+	paths := make([]string, len(pos))
+	for i, a := range pos {
+		rel, ok := w.Rel(a)
+		if !ok {
+			return fmt.Errorf("%s: not in this workspace", a)
+		}
+		paths[i] = rel
+	}
+	r, err := repo.Open(w.State.Remote)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	restored, err := w.Restore(ctx, r, paths)
+	if err != nil {
+		return err
+	}
+	if len(restored) == 0 {
+		if *md {
+			fmt.Println("No edits to restore.")
+		} else {
+			fmt.Println("nothing to restore")
+		}
+		return nil
+	}
+	if *md {
+		fmt.Printf("## Restored %d file(s)\n\n", len(restored))
+	}
+	for _, c := range restored {
+		verb := "restored"
+		if c.Kind == workspace.Added {
+			verb = "removed"
+		}
+		if *md {
+			fmt.Printf("- %s `%s`\n", verb, c.Path)
+		} else {
+			fmt.Printf("%s\t%s\n", verb, c.Path)
+		}
 	}
 	return nil
 }
