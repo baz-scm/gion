@@ -46,6 +46,13 @@ type Session struct {
 	cmd       transport.Commander
 	cl        *client.Client
 	stateless bool
+	noFilter  bool // the server can't filter; fetch everything asked for
+
+	// file:// remotes are served in-process by go-git, one fetch per
+	// connection: later fetches reconnect.
+	remote   string
+	oneFetch bool
+	fetched  bool
 }
 
 // Stateless reports whether each command is an independent request (HTTP).
@@ -100,7 +107,7 @@ func Open(ctx context.Context, remote string) (*Session, error) {
 	}
 	scheme := RemoteURL(remote)
 	stateless := strings.HasPrefix(scheme, "http://") || strings.HasPrefix(scheme, "https://")
-	return &Session{sess: sess, cmd: cmd, cl: cl, stateless: stateless}, nil
+	return &Session{sess: sess, cmd: cmd, cl: cl, stateless: stateless, remote: remote, oneFetch: strings.HasPrefix(scheme, "file://")}, nil
 }
 
 // Close releases the session.

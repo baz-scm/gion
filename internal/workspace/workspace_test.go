@@ -125,8 +125,8 @@ func TestSparseCloneIgnoresOutOfScope(t *testing.T) {
 	if res.Files != 5 {
 		t.Fatalf("files = %d, want 5", res.Files)
 	}
-	if got := strings.Join(w.State.Dirs, ","); got != ",d" {
-		t.Errorf("dirs = %q, want root and d", got)
+	if got := strings.Join(w.State.Dirs, ","); got != ",.gion,d" {
+		t.Errorf("dirs = %q, want root, .gion (the repo's config) and d", got)
 	}
 	// New files outside the paths, even next to fetched config, are not ours.
 	os.WriteFile(filepath.Join(dir, "stray.txt"), []byte("x"), 0o644)

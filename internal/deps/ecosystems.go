@@ -201,6 +201,11 @@ func (r *resolver) cargo(ctx context.Context, f string, data []byte) ([]cand, er
 			out = append(out, cand{m, root.manifest, "workspace member"})
 		}
 	}
+	if dirOf(root.manifest) != dir {
+		for _, p := range root.pkg {
+			out = append(out, cand{p, root.manifest, "workspace root package"})
+		}
+	}
 	for _, name := range inherited {
 		if p, ok := root.deps[name]; ok {
 			out = append(out, cand{p, root.manifest, fmt.Sprintf("[workspace.dependencies] %s = { path = ... }", name)})
@@ -213,6 +218,7 @@ type cargoWorkspace struct {
 	manifest string
 	members  []string
 	deps     map[string]string // [workspace.dependencies] name -> path
+	pkg      []string          // the root's own package, if it has one: its targets
 }
 
 // cargoRoot finds the workspace dir belongs to: the nearest Cargo.toml at
@@ -233,9 +239,23 @@ func (r *resolver) cargoRoot(ctx context.Context, dir string) (*cargoWorkspace, 
 		}
 		var include, exclude []string
 		deps := map[string]string{}
-		isRoot := false
+		isRoot, isPkg := false, false
+		var targets []string
 		for _, s := range tomlSections(data) {
 			switch s.name {
+			case "package":
+				isPkg = true
+				for _, kv := range s.kvs {
+					if p := firstString(kv.value); kv.key == "build" && p != "" {
+						targets = append(targets, join(a, p))
+					}
+				}
+			case "lib", "bin", "test", "bench", "example":
+				for _, kv := range s.kvs {
+					if p := firstString(kv.value); kv.key == "path" && p != "" {
+						targets = append(targets, join(a, p))
+					}
+				}
 			case "workspace":
 				isRoot = true
 				for _, kv := range s.kvs {
@@ -267,6 +287,12 @@ func (r *resolver) cargoRoot(ctx context.Context, dir string) (*cargoWorkspace, 
 			return nil, err
 		}
 		ws := &cargoWorkspace{manifest: manifest, deps: deps}
+		if isPkg {
+			// cargo loads every member, the root package included: its
+			// default source dir and build script, plus any explicit
+			// target paths. Missing ones are skipped.
+			ws.pkg = append([]string{join(a, "src"), join(a, "build.rs")}, targets...)
+		}
 		for _, d := range dirs {
 			if k, err := r.src.Stat(ctx, path.Join(d, "Cargo.toml")); err == nil && k == File {
 				ws.members = append(ws.members, d)

@@ -17,6 +17,7 @@ import (
 	"github.com/go-git/go-git/v6/plumbing/filemode"
 
 	"github.com/baz-scm/gion/internal/cache"
+	"github.com/baz-scm/gion/internal/deps"
 	"github.com/baz-scm/gion/internal/repo"
 	"github.com/baz-scm/gion/internal/wire"
 	"github.com/baz-scm/gion/internal/workspace"
@@ -34,13 +35,16 @@ commands:
           search file contents: scans locally when the candidate files are
           few (--max-files, default 5000), else asks GitHub code search for
           candidates and verifies them locally
-  clone   <remote> <dir> [--ref r] [--path p]... [--no-git] [--no-deps]
+  clone   <remote> <dir> [--ref r] [--path p]... [--project name]... [--no-git] [--no-deps]
           light workspace: only the chosen paths (default all) at one
           commit, no history. it has a local .git that gion keeps in step,
           so pre-commit, git diff and git status work (--no-git: none).
           paths their manifests depend on locally (file: packages, path
-          crates, go.work, ...) are added too, or listed if over 5 GB
-          (--no-deps: neither). Then, inside it:
+          crates and workspace members, go.work, ...) are added too, or
+          listed if over 5 GB (--no-deps: none of these). the repo's
+          .gion/projects.toml can name projects ([projects], for
+          --project) and add dependencies manifests don't show ([deps]).
+          Then, inside it:
   status                               changed files vs. the clone
                                        (honors .gitignore)
   diff    [<path>...] [--stat|--name-only|--name-status]
@@ -50,9 +54,12 @@ commands:
                                        the default branch) and push it. on a
                                        conflict, fix the marked files, then
                                        rebase --continue | --skip | --abort
-  add     <path>... [--no-deps]        widen the workspace with more paths and
-                                       their local dependencies (a new path
-                                       just joins the scope)
+  add     <path>... [--project name]... [--no-deps]
+                                       widen the workspace with more paths (or
+                                       projects) and their local dependencies
+                                       (a new path just joins the scope). reads
+                                       the workspace's .gion/projects.toml,
+                                       edits included
   sync                                 pull upstream changes into files you
                                        haven't edited; stops on conflicts
   switch  <branch>                     move the workspace to an existing branch;
@@ -478,16 +485,17 @@ func clone(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("clone", flag.ContinueOnError)
 	ref := fs.String("ref", "HEAD", "rev to clone")
 	noGit := fs.Bool("no-git", false, "write no .git (by default gion keeps one in step for pre-commit, git diff and other git-based tools)")
-	noDeps := fs.Bool("no-deps", false, "don't add the paths that manifests under --path depend on")
+	noDeps := fs.Bool("no-deps", false, "don't add local dependencies: not what manifests point at, not workspace members, not [deps] rules")
 	md := fs.Bool("md", false, "markdown output")
-	var paths multiFlag
+	var paths, projects multiFlag
 	fs.Var(&paths, "path", "path to include (repeatable; default whole repo)")
+	fs.Var(&projects, "project", "project from the repo's "+deps.ConfigFile+" to include (repeatable)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(pos) != 2 {
-		return fmt.Errorf("usage: %s clone <remote> <dir> [--ref r] [--path p]... [--no-git] [--no-deps]", prog)
+		return fmt.Errorf("usage: %s clone <remote> <dir> [--ref r] [--path p]... [--project name]... [--no-git] [--no-deps]", prog)
 	}
 	r, err := repo.Open(pos[0])
 	if err != nil {
@@ -498,10 +506,18 @@ func clone(ctx context.Context, args []string) error {
 	start := time.Now()
 	var plan depPlan
 	var expand []workspace.Expand
-	if len(paths) > 0 && !*noDeps {
+	var fromProjects []string
+	if len(projects) > 0 {
+		expand = append(expand, func(ctx context.Context, root plumbing.Hash, _ []string) ([]string, error) {
+			var err error
+			fromProjects, err = projectPaths(ctx, r, root, nil, projects)
+			return fromProjects, err
+		})
+	}
+	if (len(paths) > 0 || len(projects) > 0) && !*noDeps {
 		expand = append(expand, func(ctx context.Context, root plumbing.Hash, paths []string) ([]string, error) {
 			var err error
-			if plan, err = planDeps(ctx, r, root, nil, cleanPaths(paths)); err != nil {
+			if plan, err = planDeps(ctx, r, root, nil, nil, cleanPaths(paths)); err != nil {
 				return nil, fmt.Errorf("finding local dependencies (--no-deps skips this): %w", err)
 			}
 			return plan.paths(), nil
@@ -513,8 +529,8 @@ func clone(ctx context.Context, args []string) error {
 	}
 	elapsed := time.Since(start).Round(time.Millisecond)
 	scope := "whole repo"
-	if len(paths) > 0 {
-		scope = strings.Join(paths, ", ")
+	if len(paths)+len(projects) > 0 {
+		scope = plan.scope(paths, projects, fromProjects)
 	}
 	if *md {
 		fmt.Printf("## Cloned `%s` into `%s`\n\n", pos[0], pos[1])

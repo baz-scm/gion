@@ -31,7 +31,7 @@ Skip the heavy network on large repos, get only what you need.
 Git assumes every client keeps a full copy and can work offline. Agents and CI jobs are online all the time, usually read a few files, search a bit and push one change, and often run many at once on one machine. For them, a full clone is mostly waste. gion fetches files, trees and commits from the remote only when a task asks for them:
 
 - **Fast starts:** no clone step. Read, search, diff and log any repo right away.
-- **Small footprint:** a workspace holds only the paths you ask for. History stays on the server, so many agents can share one machine.
+- **Small footprint:** a workspace holds only the paths you ask for, plus the local packages their manifests depend on. History stays on the server, so many agents can share one machine.
 - **Full write path:** commit, push to branches and rebase with conflict resolution. Only new objects are sent.
 - **Works with your server today:** gion speaks the standard git wire protocol, so GitHub and other git servers need no setup.
 
@@ -72,6 +72,20 @@ gion clone chromium/chromium ./chromium --path docs --ref abc2bc3fe6dd
 cd chromium && echo "hello" >> docs/README.md && gion diff
 ```
 
+**Monorepos: check out a project by name.** Name starting paths once in `.gion/projects.toml`. gion follows the manifests (npm, Cargo, Go, uv, Maven, …) to bring in the packages each project depends on, and `[deps]` covers anything they don't show ([Workspaces](https://baz-scm.github.io/gion/workspaces/#projects-and-manual-dependencies)).
+
+```toml
+[projects]
+web = ["apps/web"]
+
+[deps]
+"apps/web" = ["proto/web"]   # not in any manifest
+```
+
+```sh
+gion clone acme/monorepo ./web --project web
+```
+
 **Commit and push a branch** from a repo you can write to ([Workspaces](https://baz-scm.github.io/gion/workspaces/)).
 
 <img src="docs/assets/demos/push.gif" alt="gion commit pushes an edit to a new branch" width="720">
@@ -96,7 +110,7 @@ gion borrows your `gh` login, `GITHUB_TOKEN` or git credential helper; public re
 
 | Read anything | Work in a workspace | Write |
 | --- | --- | --- |
-| `cat`, `ls`, `ls-refs` | `clone --path`, `add` | `commit` (workspace or remote) |
+| `cat`, `ls`, `ls-refs` | `clone --path` / `--project`, `add` | `commit` (workspace or remote) |
 | `find`, `grep` (whole repo) | `status`, `diff` | `rebase` (with conflict resolution) |
 | `diff`, `log`, `blame` | `sync`, `switch`, `restore` | `tag`, `branch rename` |
 

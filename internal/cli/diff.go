@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/go-git/go-git/v6/plumbing"
 
+	"github.com/baz-scm/gion/internal/deps"
 	"github.com/baz-scm/gion/internal/repo"
 	"github.com/baz-scm/gion/internal/workspace"
 )
@@ -237,13 +239,15 @@ func (o diffOut) print(ctx context.Context, r *repo.Repo, ds []repo.FileDiff, co
 func add(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	md := fs.Bool("md", false, "markdown output")
-	noDeps := fs.Bool("no-deps", false, "don't add the paths that manifests under the new paths depend on")
+	noDeps := fs.Bool("no-deps", false, "don't add local dependencies: not what manifests point at, not workspace members, not [deps] rules")
+	var projects multiFlag
+	fs.Var(&projects, "project", "project from the repo's "+deps.ConfigFile+" to add (repeatable)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
-	if len(pos) == 0 {
-		return fmt.Errorf("usage: %s add <path>... [--no-deps]  (inside a workspace)", prog)
+	if len(pos)+len(projects) == 0 {
+		return fmt.Errorf("usage: %s add <path>... [--project name]... [--no-deps]  (inside a workspace)", prog)
 	}
 	w, err := workspace.Find(".")
 	if err != nil {
@@ -254,14 +258,33 @@ func add(ctx context.Context, args []string) error {
 		return err
 	}
 	defer r.Close()
-	var plan depPlan
-	if len(w.State.Paths) > 0 && !*noDeps {
+	// The workspace's own copy of the config, edits included, so a change
+	// can be tried before it's committed; the base commit's if the
+	// workspace has none.
+	var conf *localConfig
+	if data, err := os.ReadFile(filepath.Join(w.Dir, filepath.FromSlash(deps.ConfigFile))); err == nil {
+		conf = &localConfig{name: deps.ConfigFile, data: data}
+	}
+	var root plumbing.Hash
+	if len(projects) > 0 || (len(w.State.Paths) > 0 && !*noDeps) {
 		base, _ := plumbing.FromHex(w.State.Base)
 		c, err := r.Commit(ctx, base)
 		if err != nil {
 			return err
 		}
-		if plan, err = planDeps(ctx, r, c.TreeHash, w.State.Paths, cleanPaths(pos)); err != nil {
+		root = c.TreeHash
+	}
+	asked := cleanPaths(pos)
+	var fromProjects []string
+	if len(projects) > 0 {
+		if fromProjects, err = projectPaths(ctx, r, root, conf, projects); err != nil {
+			return err
+		}
+		pos = append(pos, fromProjects...)
+	}
+	var plan depPlan
+	if len(w.State.Paths) > 0 && !*noDeps {
+		if plan, err = planDeps(ctx, r, root, conf, w.State.Paths, cleanPaths(pos)); err != nil {
 			return fmt.Errorf("finding local dependencies (--no-deps skips this): %w", err)
 		}
 	}
@@ -275,7 +298,7 @@ func add(ctx context.Context, args []string) error {
 			plan.print(true)
 			return nil
 		}
-		fmt.Printf("## Added to workspace\n\n- Paths: %s\n- %d files, %s, at `%s`\n", backticks(res.Paths), res.Files, humanBytes(res.Bytes), w.State.Base[:12])
+		fmt.Printf("## Added to workspace\n\n- Scope: %s\n- New paths: %s\n- %d files, %s, at `%s`\n", plan.scope(asked, projects, fromProjects), backticks(res.Paths), res.Files, humanBytes(res.Bytes), w.State.Base[:12])
 		if len(res.New) > 0 {
 			fmt.Printf("- Not in the repo yet (new files there will be committed): %s\n", backticks(res.New))
 		}
@@ -287,7 +310,7 @@ func add(ctx context.Context, args []string) error {
 		plan.print(false)
 		return nil
 	}
-	fmt.Printf("added %s: %d files, %s\n", strings.Join(res.Paths, ", "), res.Files, humanBytes(res.Bytes))
+	fmt.Printf("added %s (%d files, %s)\n", plan.scope(asked, projects, fromProjects), res.Files, humanBytes(res.Bytes))
 	plan.print(false)
 	return nil
 }

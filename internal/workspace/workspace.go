@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -27,7 +28,18 @@ import (
 	"github.com/baz-scm/gion/internal/repo"
 )
 
+// stateDir holds the workspace's state files. The repo may keep its own
+// files there too (its gion config); only the state files are gion's.
 const stateDir = ".gion"
+
+// stateFiles are the names in stateDir that gion writes.
+var stateFiles = map[string]bool{"state.json": true, "state.json.tmp": true, rebaseFile: true}
+
+// reserved reports whether repo path p is one of gion's state files.
+func reserved(p string) bool {
+	d, name := path.Split(p)
+	return d == stateDir+"/" && stateFiles[name]
+}
 
 // FileState is the index entry for one materialized file.
 type FileState struct {
@@ -187,7 +199,12 @@ func Clone(ctx context.Context, r *repo.Repo, dir, ref string, paths []string, g
 
 	var dirs []string
 	if len(clean) > 0 {
+		// stateDir too, for the repo's gion config.
 		dirs = ancestorDirs(clean)
+		if !slices.Contains(dirs, stateDir) {
+			dirs = append(dirs, stateDir)
+			sort.Strings(dirs)
+		}
 		more, err := contextFiles(ctx, r, root, dirs, func(p string) bool { return covered(clean, p) })
 		if err != nil {
 			return nil, CloneResult{}, err
@@ -231,6 +248,9 @@ func Clone(ctx context.Context, r *repo.Repo, dir, ref string, paths []string, g
 func (w *Workspace) abs(p string) string { return filepath.Join(w.Dir, filepath.FromSlash(p)) }
 
 func (w *Workspace) writeFile(p string, mode filemode.FileMode, data []byte) error {
+	if reserved(p) {
+		return fmt.Errorf("the repo's %s clashes with gion's own state file", p)
+	}
 	dst := w.abs(p)
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
@@ -383,7 +403,7 @@ func readDisk(abs string, fi fs.FileInfo) ([]byte, filemode.FileMode, error) {
 
 // relevantDir reports whether dir may contain in-scope files.
 func (w *Workspace) relevantDir(dir string) bool {
-	if dir == "" || w.inScope(dir) {
+	if dir == "" || w.inScope(dir) || slices.Contains(w.State.Dirs, dir) {
 		return true
 	}
 	for _, s := range w.State.Paths {
@@ -460,11 +480,14 @@ func (w *Workspace) Status() ([]FileChange, error) {
 		}
 		for _, e := range entries {
 			name := e.Name()
-			if name == ".git" || (len(dir) == 0 && name == stateDir) {
+			if name == ".git" {
 				continue
 			}
 			p := append(append([]string{}, dir...), name)
 			rel := strings.Join(p, "/")
+			if reserved(rel) {
+				continue
+			}
 			if e.IsDir() {
 				if !w.relevantDir(rel) {
 					continue
@@ -911,8 +934,11 @@ func (w *Workspace) Add(ctx context.Context, r *repo.Repo, paths []string) (AddR
 		if p == "" || p == "." {
 			return res, errors.New("to take the whole repo, clone it again without --path")
 		}
-		if strings.HasPrefix(p, "../") || p == ".." || p == stateDir || strings.HasPrefix(p, stateDir+"/") {
+		if strings.HasPrefix(p, "../") || p == ".." {
 			return res, fmt.Errorf("%s is outside the workspace", p)
+		}
+		if reserved(p) {
+			return res, fmt.Errorf("%s is gion's own state file", p)
 		}
 		if w.inScope(p) {
 			continue // already covered

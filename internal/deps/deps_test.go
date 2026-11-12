@@ -171,6 +171,36 @@ path = "../../testkit"
 	check(t, resolve(t, src, nil, []string{"scratch"}))
 }
 
+// A workspace root that is also a package (baz's platform/): cargo loads
+// it with the members, so its targets come too, not its whole directory.
+func TestCargoRootPackage(t *testing.T) {
+	src := memSource{
+		"platform/Cargo.toml": `
+[package]
+name = "platform"
+
+[[bin]]
+name = "worker"
+path = "bin/worker.rs"
+
+[workspace]
+members = ["crates/*"]
+`,
+		"platform/src/main.rs":                ``,
+		"platform/bin/worker.rs":              ``,
+		"platform/crates/reviewer/Cargo.toml": `[package]`,
+		"platform/crates/other/Cargo.toml":    `[package]`,
+		"platform/scripts/x.sh":               ``,
+	}
+	check(t, resolve(t, src, nil, []string{"platform/crates/reviewer"}),
+		`platform/bin/worker.rs <- platform/Cargo.toml: workspace root package`,
+		`platform/crates/other <- platform/Cargo.toml: workspace member`,
+		`platform/src <- platform/Cargo.toml: workspace root package`,
+	)
+	// Cloning the root itself covers its package already.
+	check(t, resolve(t, src, nil, []string{"platform"}))
+}
+
 func TestGo(t *testing.T) {
 	src := memSource{
 		"go.work":             "go 1.22\n\nuse (\n\t./svc\n\t./lib // shared\n)\n",

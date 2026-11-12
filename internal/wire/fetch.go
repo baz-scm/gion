@@ -38,8 +38,28 @@ func (s *Session) fetch(ctx context.Context, wants []plumbing.Hash, filter packp
 	if len(wants) == 0 {
 		return nil, nil
 	}
+	if s.oneFetch && s.fetched {
+		if err := s.reconnect(ctx); err != nil {
+			return nil, err
+		}
+	}
+	s.fetched = true
 	st := memory.NewStorage()
+	if s.noFilter {
+		filter = ""
+	}
 	err := s.sess.Fetch(ctx, st, &transport.FetchRequest{Wants: wants, Filter: filter, Depth: depth})
+	if errors.Is(err, transport.ErrFilterNotSupported) && filter != "" {
+		// Some servers (go-git's own, which serves file:// remotes) can't
+		// filter. Unfiltered fetches send more, but are just as correct.
+		s.noFilter = true
+		if s.oneFetch {
+			if err := s.reconnect(ctx); err != nil {
+				return nil, err
+			}
+		}
+		err = s.sess.Fetch(ctx, st, &transport.FetchRequest{Wants: wants, Depth: depth})
+	}
 	if err != nil && !errors.Is(err, transport.ErrNoChange) {
 		return nil, fmt.Errorf("fetch %d objects: %w", len(wants), err)
 	}
@@ -57,4 +77,15 @@ func (s *Session) fetch(ctx context.Context, wants []plumbing.Hash, filter packp
 		return nil, err
 	}
 	return objs, nil
+}
+
+// reconnect replaces the session's connection with a new one.
+func (s *Session) reconnect(ctx context.Context) error {
+	n, err := Open(ctx, s.remote)
+	if err != nil {
+		return err
+	}
+	s.Close()
+	s.sess, s.cmd, s.cl = n.sess, n.cmd, n.cl
+	return nil
 }

@@ -17,13 +17,16 @@ commands:
           search file contents: scans locally when the candidate files are
           few (--max-files, default 5000), else asks GitHub code search for
           candidates and verifies them locally
-  clone   <remote> <dir> [--ref r] [--path p]... [--no-git] [--no-deps]
+  clone   <remote> <dir> [--ref r] [--path p]... [--project name]... [--no-git] [--no-deps]
           light workspace: only the chosen paths (default all) at one
           commit, no history. it has a local .git that gion keeps in step,
           so pre-commit, git diff and git status work (--no-git: none).
           paths their manifests depend on locally (file: packages, path
-          crates, go.work, ...) are added too, or listed if over 5 GB
-          (--no-deps: neither). Then, inside it:
+          crates and workspace members, go.work, ...) are added too, or
+          listed if over 5 GB (--no-deps: none of these). the repo's
+          .gion/projects.toml can name projects ([projects], for
+          --project) and add dependencies manifests don't show ([deps]).
+          Then, inside it:
   status                               changed files vs. the clone
                                        (honors .gitignore)
   diff    [<path>...] [--stat|--name-only|--name-status]
@@ -33,9 +36,12 @@ commands:
                                        the default branch) and push it. on a
                                        conflict, fix the marked files, then
                                        rebase --continue | --skip | --abort
-  add     <path>... [--no-deps]        widen the workspace with more paths and
-                                       their local dependencies (a new path
-                                       just joins the scope)
+  add     <path>... [--project name]... [--no-deps]
+                                       widen the workspace with more paths (or
+                                       projects) and their local dependencies
+                                       (a new path just joins the scope). reads
+                                       the workspace's .gion/projects.toml,
+                                       edits included
   sync                                 pull upstream changes into files you
                                        haven't edited; stops on conflicts
   switch  <branch>                     move the workspace to an existing branch;
@@ -91,7 +97,8 @@ flags: --md  markdown output for agents
 
 ```text
   --md                   markdown output
-  --no-deps              don't add the paths that manifests under the new paths depend on
+  --no-deps              don't add local dependencies: not what manifests point at, not workspace members, not [deps] rules
+  --project value        project from the repo's .gion/projects.toml to add (repeatable)
 ```
 
 ## `gion blame`
@@ -118,9 +125,10 @@ flags: --md  markdown output for agents
 
 ```text
   --md                   markdown output
-  --no-deps              don't add the paths that manifests under --path depend on
+  --no-deps              don't add local dependencies: not what manifests point at, not workspace members, not [deps] rules
   --no-git               write no .git (by default gion keeps one in step for pre-commit, git diff and other git-based tools)
   --path value           path to include (repeatable; default whole repo)
+  --project value        project from the repo's .gion/projects.toml to include (repeatable)
   --ref string           rev to clone (default HEAD)
 ```
 

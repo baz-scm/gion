@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -72,7 +74,7 @@ func (w *Workspace) writeGit() error {
 		if err := os.WriteFile(w.gitPath("config"), []byte(gitConfig), 0o644); err != nil {
 			return err
 		}
-		if err := os.WriteFile(w.gitPath("info", "exclude"), []byte("/"+stateDir+"/\n"), 0o644); err != nil {
+		if err := os.WriteFile(w.gitPath("info", "exclude"), []byte(gitExclude()), 0o644); err != nil {
 			return err
 		}
 	}
@@ -634,4 +636,14 @@ func writeAtomic(dst string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp, dst)
+}
+
+// gitExclude hides gion's state files from git; the repo's own files in
+// stateDir stay visible.
+func gitExclude() string {
+	var b strings.Builder
+	for _, name := range slices.Sorted(maps.Keys(stateFiles)) {
+		fmt.Fprintf(&b, "/%s/%s\n", stateDir, name)
+	}
+	return b.String()
 }

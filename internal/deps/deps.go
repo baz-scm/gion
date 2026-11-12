@@ -52,8 +52,13 @@ type Found struct {
 
 // Resolve returns the paths that the manifests under start depend on,
 // directly or through each other, that aren't already covered by have or
-// start. Gradle builds are scripts and aren't read.
+// start. Gradle builds are scripts and aren't read. The [deps] rules of
+// the repo's ConfigFile are followed like manifests.
 func Resolve(ctx context.Context, src Source, have, start []string) ([]Found, error) {
+	conf, err := LoadConfig(ctx, src)
+	if err != nil {
+		return nil, err
+	}
 	r := &resolver{src: src, files: map[string][]byte{}, roots: map[string]any{}}
 	scope := append(append([]string{}, have...), start...)
 	queue := append([]string{}, start...)
@@ -67,6 +72,9 @@ func Resolve(ctx context.Context, src Source, have, start []string) ([]Found, er
 		cands, err := r.scan(ctx, level, scanned)
 		if err != nil {
 			return nil, err
+		}
+		for _, c := range conf.rules(level) {
+			cands = append(cands, scannedCand{cand: c})
 		}
 		for _, c := range cands {
 			if c.path == "" || covered(scope, c.path) {

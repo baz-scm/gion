@@ -1,6 +1,6 @@
 # Workspaces
 
-A workspace is a directory with the files you chose at one commit, plus `.gion/state.json`. There is no history, and the remote branch is the only source of truth. A small `.git` lets git-based tools work ([below](#pre-commit-and-other-git-based-tools)).
+A workspace is a directory with the files you chose at one commit, plus gion's state in `.gion/state.json`. There is no history, and the remote branch is the only source of truth. A small `.git` lets git-based tools work ([below](#pre-commit-and-other-git-based-tools)).
 
 ```sh
 gion clone baz-scm/baz ./baz --path services/api --path libs/auth
@@ -45,7 +45,41 @@ Root lockfiles and workspace roots sit in a parent directory, so they come along
 
 If the dependencies together come to more than 5 GB, gion lists them instead of adding them, with the `gion add` command to take the ones you need. It measures with GitHub's API; on other hosts there's no cap. `--no-deps` on `clone` or `add` turns the whole thing off.
 
-**Gradle isn't followed.** Gradle builds are scripts (`settings.gradle(.kts)`, `build.gradle(.kts)`), so paths can be computed at build time and reading them as text would miss or invent dependencies. For a Gradle project, `gion add` the included builds and projects yourself; `settings.gradle(.kts)` at the root comes with every sparse clone.
+**Gradle isn't followed.** Gradle builds are scripts (`settings.gradle(.kts)`, `build.gradle(.kts)`), so paths can be computed at build time and reading them as text would miss or invent dependencies. For a Gradle project, list the included builds and projects as [`[deps]` rules](#projects-and-manual-dependencies), or `gion add` them yourself; `settings.gradle(.kts)` at the root comes with every sparse clone.
+
+## Projects and manual dependencies
+
+A repo can describe itself to gion in `.gion/projects.toml`:
+
+```toml
+# Names for starting paths, for --project.
+[projects]
+bff = ["apps/bff"]
+web = ["apps/web", "packages/ui"]
+
+# Dependencies manifests don't show (Gradle builds, shared protos,
+# codegen): whenever apps/web is in a workspace, these come too.
+[deps]
+"apps/web" = ["proto/web", "tools/codegen"]
+```
+
+Clone or widen by name:
+
+```sh
+gion clone baz-scm/baz ./web --project web
+gion add --project bff
+```
+
+A project only says where to start. Local dependencies are still inferred from the manifests, so the file doesn't go stale as they change. `--project` and `--path` mix, and both repeat. `clone` reads the file at the commit it clones. Every clone brings `.gion/projects.toml`, and `add` reads the workspace's copy, so you can try an edit with `add` before you commit it.
+
+A `[deps]` rule applies however its path joins the workspace: through `--path` or `--project`, inside a bigger path, or as another path's dependency. Rules chain with manifests both ways, and gion shows them as the reason:
+
+```text
++ proto/web      (.gion/projects.toml: apps/web)
++ tools/codegen  (.gion/projects.toml: proto/web)
+```
+
+`--no-deps` turns rules off along with the manifests. Every sparse clone brings `.gion/`, so you can edit and commit the file from any workspace; gion's own state files in that directory are never committed. See what a repo defines with `gion cat <remote> HEAD:.gion/projects.toml`.
 
 ## Widening
 
