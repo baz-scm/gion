@@ -57,6 +57,20 @@ gion clone chromium/chromium ./chromium --path docs --ref abc2bc3fe6dd
 cd chromium && echo "hello" >> docs/README.md && gion diff
 ```
 
+**Monorepos: check out a project by name.** Name starting paths once in `.gion/projects.toml`. gion follows the manifests (npm, Cargo, Go, uv, Maven, …) to bring in the local packages each project depends on, and `[deps]` covers anything they don't show ([Projects](workspaces.md#projects-and-manual-dependencies)).
+
+```toml
+[projects]
+web = ["apps/web"]
+
+[deps]
+"apps/web" = ["proto/web"]   # not in any manifest
+```
+
+```sh
+gion clone acme/monorepo ./web --project web
+```
+
 To push, use a repo you can write to: `gion commit -m "my change" --branch my-fix` ([Workspaces](workspaces.md)).
 
 ## Where next
