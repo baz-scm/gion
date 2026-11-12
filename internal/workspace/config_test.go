@@ -13,6 +13,8 @@ import (
 // workspace: cloned even when sparse, tracked, committable, seen by git.
 // gion's state files beside them stay out of all of that.
 func TestRepoFilesInStateDir(t *testing.T) {
+	t.Setenv("GIT_AUTHOR_NAME", "gion")
+	t.Setenv("GIT_AUTHOR_EMAIL", "gion@test")
 	remote, clone := testgit.Serve(t)
 	pushUpstream(t, clone, "main", map[string]string{".gion/projects.toml": "[projects]\nf = [\"d/f\"]\n"})
 	r := openRepo(t, remote)
