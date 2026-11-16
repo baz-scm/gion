@@ -53,6 +53,19 @@ func Root() (string, error) {
 	return filepath.Dir(d), nil
 }
 
+// workspacesDir, under Root, is the workspace registry (see
+// workspace.Touch). Eviction leaves it alone.
+const workspacesDir = "workspaces"
+
+// WorkspacesDir returns the workspace registry directory.
+func WorkspacesDir() (string, error) {
+	root, err := Root()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, workspacesDir), nil
+}
+
 // cacheDirTag marks the root as a cache for backup tools (restic, borg, tar
 // --exclude-caches): https://bford.info/cachedir/
 const cacheDirTag = "Signature: 8a477f597d28d172789f06886806bc55\n# gion object cache; safe to delete, it refills on demand.\n"

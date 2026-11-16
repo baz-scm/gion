@@ -22,6 +22,12 @@ All gion processes on a machine share a content-addressed cache in `~/.gion`: ob
 
 About once an hour gion trims the cache to 80% of the cap, least recently used first, never touching anything used in the last 10 minutes. Deleting `~/.gion` is always safe; it refills on demand.
 
+## Cleaning up workspaces
+
+gion remembers each workspace it clones, and when a gion command last ran in it. `gion gc` also deletes workspaces unused for a week (`--idle 3d`, `--idle 12h`; `--idle 0` keeps them all) that hold no work: no edits, no new files anywhere in the directory (files `.gitignore` matches don't count) and no stopped rebase. Everything in such a workspace is on the remote, so `gion clone` brings it back. Workspaces with work in them are listed and kept, and so is the one you're in. `--dry-run` lists what would go without deleting anything.
+
+Workspace cleanup runs only when you run `gion gc`, never automatically.
+
 ## Writes cost the size of the change
 
 A commit is built from path changes: only the trees on changed paths are fetched, and only new objects are pushed (a one-file commit sends 3–4 objects). Pushes are compare-and-swap; see [Branches & rebase](branches.md#compare-and-swap-pushes).

@@ -80,8 +80,10 @@ commands:
           branch, which then follows the new name
   tag     <remote> <name> [<rev>] [-m <msg>]
           create a tag on the remote (annotated with -m); never moves one
-  gc      [--max SIZE]                 trim the cache (~/.gion) now and show its
-                                       size; it's also trimmed automatically
+  gc      [--max SIZE] [--idle 7d] [--dry-run]
+          trim the cache (~/.gion) now and show its size (it's also trimmed
+          automatically), and delete workspaces unused for --idle that hold
+          no edits, new files or stopped rebase
   skill   install [--project]          install the agent skill for Claude Code and
                                        agents reading .agents/skills (home dir,
                                        or the current project with --project)
@@ -167,6 +169,8 @@ flags: --md  markdown output for agents
 ## `gion gc`
 
 ```text
+  --dry-run              list the workspaces gc would delete, delete nothing (the cache is still trimmed)
+  --idle string          delete clean workspaces unused for this long (e.g. 3d, 12h; 0 keeps all) (default 7d)
   --max string           size cap for this run (default $GION_CACHE_MAX or 1GB)
   --md                   markdown output
 ```

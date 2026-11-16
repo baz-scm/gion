@@ -80,4 +80,5 @@ Pushes are compare-and-swap: if someone else pushed to the branch on other files
 - To run tests in a workspace, `gion add` the test directories and the code they import. If that's most of the repo, push the branch and let CI run them.
 - Pushes can't be undone by force-push: check `gion status --md` before each commit so ignored or generated files don't slip in.
 - `gion` has no merge: bring a branch up to date with `gion rebase`. If a conflict's right resolution isn't clear from the code, ask the user instead of guessing.
+- Delete a workspace once its work is pushed. `gion gc` also deletes workspaces unused for a week that hold no edits or new files (`--dry-run` lists them).
 - Run `gion help` for every flag.

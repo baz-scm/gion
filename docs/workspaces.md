@@ -146,3 +146,7 @@ That `.git` is a local snapshot, not a clone, with no history, on a branch named
 ## Running tests
 
 A workspace runs whatever the files on disk allow. Add the test directories and the code they import with `gion add`; if that's most of the repo, push the branch and let CI run them.
+
+## Cleaning up
+
+A workspace is just a directory: delete it once its work is pushed. `gion gc` also deletes workspaces unused for a week that hold no edits, new files or stopped rebase, and keeps (and lists) the rest; see [cleaning up workspaces](how-it-works.md#cleaning-up-workspaces).

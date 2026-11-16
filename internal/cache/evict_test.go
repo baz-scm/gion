@@ -125,3 +125,23 @@ func TestGetRefreshesStaleMtime(t *testing.T) {
 		t.Error("CACHEDIR.TAG not written")
 	}
 }
+
+// The workspace registry lives under the root but isn't cache: eviction
+// neither counts nor deletes it.
+func TestEvictSkipsWorkspaceRegistry(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	entry := filepath.Join(root, workspacesDir, "abc")
+	writeAged(t, entry, 1<<20, 48*time.Hour, now)
+	writeAged(t, filepath.Join(root, "objects", "aa", "bb"), 1<<20, 48*time.Hour, now)
+	st, err := Evict(root, 1, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Removed != 1 {
+		t.Errorf("removed %d files, want 1 (the object)", st.Removed)
+	}
+	if _, err := os.Stat(entry); err != nil {
+		t.Errorf("registry entry evicted: %v", err)
+	}
+}

@@ -92,6 +92,9 @@ func Evict(root string, max int64, now time.Time) (Stats, error) {
 			return err
 		}
 		if d.IsDir() {
+			if d.Name() == workspacesDir && filepath.Dir(p) == root {
+				return filepath.SkipDir // the workspace registry, not cache
+			}
 			return nil
 		}
 		if name := d.Name(); name == "CACHEDIR.TAG" || name == stampFile {

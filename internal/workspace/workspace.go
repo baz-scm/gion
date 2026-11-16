@@ -433,7 +433,11 @@ func (w *Workspace) ignores() (*gitignore.Scope, billy.Filesystem, error) {
 // skipped, so a sparse workspace never reports them as deleted. Untracked
 // files matched by .gitignore are skipped too; tracked files are always
 // checked, as in git.
-func (w *Workspace) Status() ([]FileChange, error) {
+func (w *Workspace) Status() ([]FileChange, error) { return w.status(false) }
+
+// status is Status; with all, it also reports untracked files outside the
+// chosen paths, so nothing the user made is missed.
+func (w *Workspace) status(all bool) ([]FileChange, error) {
 	scope, fsys, err := w.ignores()
 	if err != nil {
 		return nil, err
@@ -489,7 +493,7 @@ func (w *Workspace) Status() ([]FileChange, error) {
 				continue
 			}
 			if e.IsDir() {
-				if !w.relevantDir(rel) {
+				if !all && !w.relevantDir(rel) {
 					continue
 				}
 				child, err := sc.Descend(p, func() ([]gitignore.Pattern, error) { return gitignore.DirPatterns(fsys, p) })
@@ -505,7 +509,7 @@ func (w *Workspace) Status() ([]FileChange, error) {
 				continue
 			}
 			_, tracked := w.State.Files[rel]
-			if !w.inScope(rel) && !(tracked && w.inContext(rel)) {
+			if !all && !w.inScope(rel) && !(tracked && w.inContext(rel)) {
 				continue
 			}
 			if !tracked && sc.Match(p, false) {

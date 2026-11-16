@@ -98,8 +98,10 @@ commands:
           branch, which then follows the new name
   tag     <remote> <name> [<rev>] [-m <msg>]
           create a tag on the remote (annotated with -m); never moves one
-  gc      [--max SIZE]                 trim the cache (~/.gion) now and show its
-                                       size; it's also trimmed automatically
+  gc      [--max SIZE] [--idle 7d] [--dry-run]
+          trim the cache (~/.gion) now and show its size (it's also trimmed
+          automatically), and delete workspaces unused for --idle that hold
+          no edits, new files or stopped rebase
   skill   install [--project]          install the agent skill for Claude Code and
                                        agents reading .agents/skills (home dir,
                                        or the current project with --project)
@@ -156,7 +158,8 @@ func Main(invokedAs string, args []string) int {
 		return 0
 	}
 	if name != "gc" && name != "version" && name != "skill" {
-		cache.MaybeEvict() // at most hourly; keeps ~/.gion under GION_CACHE_MAX
+		workspace.Touch(".") // marks the workspace in use, for gc
+		cache.MaybeEvict()   // at most hourly; keeps ~/.gion under GION_CACHE_MAX
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", prog, err)
@@ -538,6 +541,7 @@ func clone(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	workspace.Touch(dir)
 	elapsed := time.Since(start).Round(time.Millisecond)
 	scope := "whole repo"
 	if len(paths)+len(projects) > 0 {
