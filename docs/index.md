@@ -73,6 +73,37 @@ gion clone acme/monorepo ./web --project web
 
 To push, use a repo you can write to: `gion commit -m "my change" --branch my-fix` ([Workspaces](workspaces.md)).
 
+## Will it help your repo?
+
+Paste this into your coding agent (Claude Code, Codex, Cursor) from the root of your repo. It asks whether you want a quick look or a measured deep pass, then ranks where gion saves time and money.
+
+```text
+Assess where gion (https://github.com/baz-scm/gion) would save us significant
+time or money. gion is a git client that reads, searches, diffs and pushes to
+remote repos without cloning them, and checks out only the paths you ask for.
+
+First ask me which pass I want (if you can't ask, do the quick look):
+- Quick look: read https://baz-scm.github.io/gion/ (start with the CI, agents
+  and performance pages) and the files in this repo. Install, clone and fetch
+  nothing; estimate savings from the benchmarks in the docs.
+- Deep pass: also install gion (https://baz-scm.github.io/gion/getting-started/),
+  learn it from `gion help --md`, and time it against the current approach on
+  the top 3-5 cases, cold and warm.
+
+Then look at this repo:
+1. Size: repo size, file count and history depth.
+2. CI: every checkout step (actions/checkout, fetch-depth, sparse-checkout,
+   submodules, LFS). Which jobs need only a few directories or only the PR's
+   changed files? How often does each run?
+3. Agents and scripts: anything that clones this or other repos just to read,
+   grep or diff a few files (coding agents, bots, codegen, release tooling).
+4. Developer workflows that pull the whole repo to work in one area.
+
+For each opportunity: what changes, the gion command or gion-action step that
+replaces it, and the saving (minutes per run x runs per month, CI minutes,
+disk, network). Rank by impact. After a quick look, offer the deep pass.
+```
+
 ## Where next
 
 - [Getting started](getting-started.md): install, credentials, first commands
