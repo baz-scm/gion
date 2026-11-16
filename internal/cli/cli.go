@@ -26,7 +26,7 @@ import (
 const usageText = `usage: %s <command> [args]
 
 commands:
-  ls-refs <remote> [--prefix p]...     list remote refs (protocol v2)
+  ls-refs <remote> [--prefix p]...     list remote branches and tags (protocol v2)
   cat     <remote> <rev>:<path>        print a file's raw bytes
   ls      <remote> [<rev>[:<dir>]]     list a directory (default HEAD:)
   find    <remote> [<rev>] <pattern>  search file paths across the whole repo
@@ -225,10 +225,14 @@ func parse(fs *flag.FlagSet, args []string) ([]string, error) {
 	}
 }
 
+// lsRefsDefault matches what `git ls-remote` lists by default: HEAD,
+// branches and tags (pull and other namespaces stay out).
+var lsRefsDefault = []string{"HEAD", "refs/heads/", "refs/tags/"}
+
 func lsRefs(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("ls-refs", flag.ContinueOnError)
 	var prefixes multiFlag
-	fs.Var(&prefixes, "prefix", "ref prefix to list (repeatable; default HEAD, refs/heads/)")
+	fs.Var(&prefixes, "prefix", "ref prefix to list (repeatable; default HEAD, refs/heads/, refs/tags/)")
 	timing := fs.Bool("time", false, "print elapsed time to stderr")
 	fs.Bool("md", false, "accepted for uniformity; output is always git ls-remote's format")
 	pos, err := parse(fs, args)
@@ -239,7 +243,7 @@ func lsRefs(ctx context.Context, args []string) error {
 		return fmt.Errorf("usage: %s ls-refs <remote> [--prefix p]...", prog)
 	}
 	if len(prefixes) == 0 {
-		prefixes = wire.DefaultPrefixes
+		prefixes = lsRefsDefault
 	}
 
 	start := time.Now()

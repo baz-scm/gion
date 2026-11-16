@@ -20,9 +20,6 @@ import (
 	"github.com/baz-scm/gion/internal/auth"
 )
 
-// DefaultPrefixes keeps ls-refs small on repos with huge tag/PR namespaces.
-var DefaultPrefixes = []string{"HEAD", "refs/heads/"}
-
 // Ref is one ls-refs line. Unlike go-git's plumbing.Reference, a symref keeps
 // both its target and the oid it resolves to, so HEAD resolves in one round trip.
 type Ref struct {

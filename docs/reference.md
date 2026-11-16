@@ -8,7 +8,7 @@ Every command takes `--md` for Markdown output meant for agents, and `-h` for it
 usage: gion <command> [args]
 
 commands:
-  ls-refs <remote> [--prefix p]...     list remote refs (protocol v2)
+  ls-refs <remote> [--prefix p]...     list remote branches and tags (protocol v2)
   cat     <remote> <rev>:<path>        print a file's raw bytes
   ls      <remote> [<rev>[:<dir>]]     list a directory (default HEAD:)
   find    <remote> [<rev>] <pattern>  search file paths across the whole repo
@@ -203,7 +203,7 @@ flags: --md  markdown output for agents
 
 ```text
   --md                   accepted for uniformity; output is always git ls-remote's format
-  --prefix value         ref prefix to list (repeatable; default HEAD, refs/heads/)
+  --prefix value         ref prefix to list (repeatable; default HEAD, refs/heads/, refs/tags/)
   --time                 print elapsed time to stderr
 ```
 
