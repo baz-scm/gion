@@ -11,6 +11,8 @@ gion diff
 gion commit -m "fix handler" --branch my-fix
 ```
 
+The directory is optional: without it, `clone` names it after the repo, as git does (`gion clone baz-scm/baz --path services/api` clones into `./baz`).
+
 ## What a sparse clone contains
 
 - Every file under each `--path` (a directory or a single file). Without `--path` you get the whole repo.

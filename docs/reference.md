@@ -17,10 +17,11 @@ commands:
           search file contents: scans locally when the candidate files are
           few (--max-files, default 5000), else asks GitHub code search for
           candidates and verifies them locally
-  clone   <remote> <dir> [--ref r] [--path p]... [--project name]... [--no-git] [--no-deps]
+  clone   <remote> [<dir>] [--ref r] [--path p]... [--project name]... [--no-git] [--no-deps]
           light workspace: only the chosen paths (default all) at one
-          commit, no history. it has a local .git that gion keeps in step,
-          so pre-commit, git diff and git status work (--no-git: none).
+          commit, no history, in <dir> (default: the repo's name, like
+          git). it has a local .git that gion keeps in step, so
+          pre-commit, git diff and git status work (--no-git: none).
           paths their manifests depend on locally (file: packages, path
           crates and workspace members, go.work, ...) are added too, or
           listed if over 5 GB (--no-deps: none of these). the repo's

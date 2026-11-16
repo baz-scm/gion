@@ -35,10 +35,11 @@ commands:
           search file contents: scans locally when the candidate files are
           few (--max-files, default 5000), else asks GitHub code search for
           candidates and verifies them locally
-  clone   <remote> <dir> [--ref r] [--path p]... [--project name]... [--no-git] [--no-deps]
+  clone   <remote> [<dir>] [--ref r] [--path p]... [--project name]... [--no-git] [--no-deps]
           light workspace: only the chosen paths (default all) at one
-          commit, no history. it has a local .git that gion keeps in step,
-          so pre-commit, git diff and git status work (--no-git: none).
+          commit, no history, in <dir> (default: the repo's name, like
+          git). it has a local .git that gion keeps in step, so
+          pre-commit, git diff and git status work (--no-git: none).
           paths their manifests depend on locally (file: packages, path
           crates and workspace members, go.work, ...) are added too, or
           listed if over 5 GB (--no-deps: none of these). the repo's
@@ -494,8 +495,14 @@ func clone(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(pos) != 2 {
-		return fmt.Errorf("usage: %s clone <remote> <dir> [--ref r] [--path p]... [--project name]... [--no-git] [--no-deps]", prog)
+	if len(pos) < 1 || len(pos) > 2 {
+		return fmt.Errorf("usage: %s clone <remote> [<dir>] [--ref r] [--path p]... [--project name]... [--no-git] [--no-deps]", prog)
+	}
+	dir := ""
+	if len(pos) == 2 {
+		dir = pos[1]
+	} else if dir = defaultCloneDir(pos[0]); dir == "" {
+		return fmt.Errorf("can't tell a directory name from %q: pass <dir>", pos[0])
 	}
 	r, err := repo.Open(pos[0])
 	if err != nil {
@@ -523,7 +530,7 @@ func clone(ctx context.Context, args []string) error {
 			return plan.paths(), nil
 		})
 	}
-	_, res, err := workspace.Clone(ctx, r, pos[1], *ref, paths, !*noGit, expand...)
+	_, res, err := workspace.Clone(ctx, r, dir, *ref, paths, !*noGit, expand...)
 	if err != nil {
 		return err
 	}
@@ -533,7 +540,7 @@ func clone(ctx context.Context, args []string) error {
 		scope = plan.scope(paths, projects, fromProjects)
 	}
 	if *md {
-		fmt.Printf("## Cloned `%s` into `%s`\n\n", pos[0], pos[1])
+		fmt.Printf("## Cloned `%s` into `%s`\n\n", pos[0], dir)
 		fmt.Printf("- Commit: `%s` (%s)\n- Scope: %s\n", res.Commit, *ref, scope)
 		fmt.Printf("- %d files, %s, %s\n", res.Files, humanBytes(res.Bytes), elapsed)
 		if !*noGit {
@@ -544,9 +551,26 @@ func clone(ctx context.Context, args []string) error {
 		plan.print(true)
 		return nil
 	}
-	fmt.Printf("cloned %s@%s into %s: %d files, %s (%s) in %s\n", pos[0], res.Commit.String()[:12], pos[1], res.Files, humanBytes(res.Bytes), scope, elapsed)
+	fmt.Printf("cloned %s@%s into %s: %d files, %s (%s) in %s\n", pos[0], res.Commit.String()[:12], dir, res.Files, humanBytes(res.Bytes), scope, elapsed)
 	plan.print(false)
 	return nil
+}
+
+// defaultCloneDir names the directory clone uses when none is given: the
+// last path segment of the remote without ".git", as git clone does
+// (owner/repo, https://host/owner/repo.git and git@host:owner/repo all give
+// "repo"). It returns "" when the remote has no usable name.
+func defaultCloneDir(remote string) string {
+	s := strings.TrimRight(remote, "/")
+	s = strings.TrimSuffix(s, ".git")
+	s = strings.TrimRight(s, "/")
+	if i := strings.LastIndexAny(s, "/:"); i >= 0 {
+		s = s[i+1:]
+	}
+	if s == "" || s == "." || s == ".." {
+		return ""
+	}
+	return s
 }
 
 func status(ctx context.Context, args []string) error {
