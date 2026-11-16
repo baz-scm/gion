@@ -94,10 +94,14 @@ Then look at this repo:
 1. Size: repo size, file count and history depth.
 2. CI: every checkout step (actions/checkout, fetch-depth, sparse-checkout,
    submodules, LFS). Which jobs need only a few directories or only the PR's
-   changed files? How often does each run?
+   changed files? How often does each run? gion-action
+   (https://github.com/baz-scm/gion-action) replaces these steps in GitHub
+   Actions: checkout for a sparse checkout, changed for a PR's changed files.
 3. Agents and scripts: anything that clones this or other repos just to read,
    grep or diff a few files (coding agents, bots, codegen, release tooling).
-4. Developer workflows that pull the whole repo to work in one area.
+4. Developer workflows that pull the whole repo to work in one area
+   (gion clone --path checks out only chosen paths; --project checks out one
+   project plus the packages its manifests depend on).
 
 For each opportunity: what changes, the gion command or gion-action step that
 replaces it, and the saving (minutes per run x runs per month, CI minutes,
